@@ -11,6 +11,8 @@ live pipeline return status="pending" rather than a fabricated score.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from app.flood.client import FloodStatus, GGISFloodClient, get_flood_client
 from app.location_intelligence.schemas import (
     AnalyzeRequest,
@@ -19,6 +21,9 @@ from app.location_intelligence.schemas import (
     ScorecardResponse,
 )
 from app.scoring.engine import DomainScore
+
+if TYPE_CHECKING:
+    from app.cache import ScorecardCache
 
 # Domains whose Tier-1 pipelines are not yet published in this build.
 _PENDING_TIER1 = ("amenities", "accessibility", "feasibility")
@@ -67,13 +72,36 @@ def _point_of(req: AnalyzeRequest) -> tuple[float, float]:
     return sum(lons) / len(lons), sum(lats) / len(lats)
 
 
-async def analyze(req: AnalyzeRequest, flood: GGISFloodClient | None = None) -> ScorecardResponse:
+async def analyze(
+    req: AnalyzeRequest,
+    flood: GGISFloodClient | None = None,
+    versions: dict[str, str] | None = None,
+    cache: ScorecardCache | None = None,
+) -> ScorecardResponse:
+    """Compute (or serve from cache) the eight-domain scorecard.
+
+    `versions` are the current published layer versions (from `layer_registry`);
+    they stamp the scorecard and form part of the cache key, so an ETL layer bump
+    changes the key and the next request recomputes. `cache` and `versions` are
+    optional so the function stays unit-testable without Redis or a database.
+    """
     flood = flood or get_flood_client()
     lon, lat = _point_of(req)
     gh8 = _geohash8(lon, lat)
+    versions = versions or {}
+
+    # --- Cache lookup (keyed by profile + geohash8 + layer versions) ---
+    cache_key = None
+    if cache is not None:
+        cache_key = cache.make_key(req.profile, gh8, versions)
+        hit = await cache.get(cache_key)
+        if hit is not None:
+            hit["cached"] = True
+            return ScorecardResponse.model_validate(hit)
 
     domains: dict[str, DomainResult] = {}
-    layer_versions: dict[str, str] = {}
+    # Stamp with the registry versions in force; live hazard version added below.
+    layer_versions: dict[str, str] = dict(versions)
 
     # --- Flood (live GGIS call, Tier 1) ---
     fr = await flood.risk(req.geometry.model_dump())
@@ -115,13 +143,18 @@ async def analyze(req: AnalyzeRequest, flood: GGISFloodClient | None = None) -> 
             note="Ships in a later phase (Tier 2–3).",
         )
 
-    return ScorecardResponse(
+    response = ScorecardResponse(
         location=LocationInfo(geohash8=gh8),
         domains=domains,
         layer_versions=layer_versions,
         scoring_profile=req.profile,
         cached=False,
     )
+
+    if cache is not None and cache_key is not None:
+        await cache.set(cache_key, response.model_dump())
+
+    return response
 
 
 def domainscore_to_result(ds: DomainScore, status: str = "ok") -> DomainResult:

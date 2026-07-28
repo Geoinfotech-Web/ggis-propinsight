@@ -42,6 +42,24 @@ The `layer_registry` table (Alembic migration `0002`) is the shared source of tr
 for current layer versions; the API reads it to stamp scorecards, ETL bumps it on
 publish.
 
+## Google Earth Engine (DEM + remote sensing)
+
+`aia_etl/gee.py` sources the DEM (and other imagery analysis) from Earth Engine
+instead of manually downloaded tiles. Auth is service-account based, read from
+the root `.env`:
+
+- `GEE_SERVICE_ACCOUNT_EMAIL`
+- `GEE_SERVICE_ACCOUNT_KEY` — path to the JSON key file **or** the JSON content itself
+- `GEE_PROJECT` — optional; parsed from the SA email when unset
+
+Exports:
+- `export_dem_cop30(bbox, out)` — Copernicus GLO-30 DEM mosaic for the AOI.
+- `export_s2_composite(bbox, out, start, end)` — cloud-masked Sentinel-2 median
+  composite (RGB+NIR) for vegetation/NDVI analysis.
+
+> `getDownloadURL` caps at a few tens of MB. For an AOI beyond that (all of FCT
+> at 30 m), tile the bbox or switch to `ee.batch.Export.image.toCloudStorage`.
+
 ## Run
 
 ```bash
@@ -51,6 +69,9 @@ docker compose up --build etl-worker etl-beat
 # Trigger a pipeline manually (inside the worker container or a shell with deps):
 celery -A aia_etl.celery_app call aia_etl.tasks.osm.refresh_osm
 celery -A aia_etl.celery_app call aia_etl.tasks.flood_tiles.mirror_hazard_tiles
+
+# DEM straight from Earth Engine (Copernicus GLO-30) → slope/flow-acc/TWI COGs:
+celery -A aia_etl.celery_app call aia_etl.tasks.dem.dem_from_gee
 ```
 
 ## Tests

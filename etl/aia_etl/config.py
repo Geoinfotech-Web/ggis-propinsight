@@ -25,6 +25,13 @@ class ETLSettings(BaseSettings):
     ggis_flood_api_key: str = "dev-key"
     ggis_flood_hmac_secret: str = "dev-secret"
 
+    # Google Earth Engine (DEM + remote-sensing analysis, Overview §6.3).
+    # Service-account auth. The key may be a path to the JSON key file or the
+    # JSON content itself. Project is parsed from the SA email when unset.
+    gee_service_account_email: str | None = None
+    gee_service_account_key: str | None = None
+    gee_project: str | None = None
+
     # Data working directory (COGs, extracts) — mounted volume in compose.
     data_dir: str = "/data"
 

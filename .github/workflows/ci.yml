@@ -55,7 +55,7 @@ jobs:
       # The geo stack (rasterio/pysheds) needs system GDAL and runs in the ETL
       # image; here we install only what the pure-logic tests need.
       - name: Install test deps
-        run: pip install ruff pytest "sqlalchemy>=2.0"
+        run: pip install ruff pytest "sqlalchemy>=2.0" "pydantic-settings>=2.3" requests
       - name: Ruff (lint)
         run: ruff check aia_etl tests
       - name: Pytest (pure logic)

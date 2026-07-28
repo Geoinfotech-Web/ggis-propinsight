@@ -106,6 +106,23 @@ def _to_cog(memfile: Any, out_path: Path) -> None:
         cog_translate(src, str(out_path), cog_profiles.get("deflate"), in_memory=True, quiet=True)
 
 
+@app.task(name="aia_etl.tasks.dem.dem_from_gee")
+def dem_from_gee(bbox: list[float] | None = None, scale: int = 30) -> dict[str, Any]:
+    """Source the AOI DEM from Google Earth Engine (Copernicus GLO-30), then run
+    the terrain derivatives. Defaults to the FCT pilot bbox.
+    """
+    from aia_etl.gee import export_dem_cop30
+    from aia_etl.qa import FCT_BBOX
+
+    aoi = tuple(bbox) if bbox else FCT_BBOX
+    dem_out = Path(settings.data_dir) / "dem" / "cop30.tif"
+    export_dem_cop30(aoi, dem_out, scale=scale)  # type: ignore[arg-type]
+    result = terrain_derivatives(str(dem_out))
+    result["source"] = "GEE COPERNICUS/DEM/GLO30"
+    result["aoi_bbox"] = list(aoi)
+    return result
+
+
 @app.task(name="aia_etl.tasks.dem.terrain_derivatives")
 def terrain_derivatives(dem_path: str) -> dict[str, Any]:
     """Produce slope/flow-accumulation/TWI COGs from a source DEM and bump `dem`."""
