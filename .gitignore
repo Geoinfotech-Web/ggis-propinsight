@@ -1,0 +1,48 @@
+# ---- Secrets / env ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# ---- Node / frontend ----
+node_modules/
+apps/web/dist/
+apps/web/.vite/
+*.local
+
+# ---- Data / geospatial artefacts (never commit large data) ----
+data/
+*.osm.pbf
+*.tif
+*.tiff
+*.cog
+*.mbtiles
+*.gpkg
+*.geojson
+!docs/**/*.geojson
+
+# ---- Editor / OS ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- Docker / logs ----
+*.log
+.pgdata/

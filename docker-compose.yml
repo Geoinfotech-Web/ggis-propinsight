@@ -1,0 +1,66 @@
+# GGIS PropInsight (AIA) — local development stack
+# Brings up: PostGIS, Redis, the FastAPI API, and the mock GGIS Flood Watch server.
+# OSRM / Valhalla / TiTiler / martin are added in Phase 1 as data layers land.
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-propinsight}
+      POSTGRES_USER: ${POSTGRES_USER:-aia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aia}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aia} -d ${POSTGRES_DB:-propinsight}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mock-ggis:
+    build: ./services/mock-ggis
+    ports:
+      - "9100:9100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:9100/v1/meta/model'); sys.exit(0)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./services/api
+    env_file: .env
+    environment:
+      # Container-network overrides (compose service names)
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      GGIS_FLOOD_BASE_URL: http://mock-ggis:9100
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/api:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-ggis:
+        condition: service_started
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  pgdata:

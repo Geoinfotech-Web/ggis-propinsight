@@ -1,0 +1,52 @@
+"""FastAPI gateway — single app fronting all AIA services (TDD §4.2).
+
+Versioned under /v1; breaking changes only via a new version.
+"""
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app import __version__
+from app.config import get_settings
+from app.flood.client import get_flood_client
+from app.location_intelligence.router import router as locations_router
+
+settings = get_settings()
+logging.basicConfig(level=settings.aia_log_level)
+
+app = FastAPI(
+    title="GGIS PropInsight (AIA) API",
+    version=__version__,
+    description="Location intelligence API for the Nigerian property market. FCT pilot.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+meta = APIRouter(tags=["meta"])
+
+
+@meta.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok", "version": __version__, "env": settings.aia_env}
+
+
+@meta.get("/v1/meta/flood")
+async def flood_meta() -> dict:
+    """Surface GGIS model version/coverage (verbatim) — proves the integration is live."""
+    try:
+        return {"status": "ok", "ggis": await get_flood_client().meta()}
+    except Exception as exc:  # noqa: BLE001 — degrade gracefully, never 500 the meta probe
+        return {"status": "degraded", "error": str(exc)}
+
+
+app.include_router(meta)
+app.include_router(locations_router)
