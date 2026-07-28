@@ -9,9 +9,15 @@ import logging
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app import __version__
 from app.config import get_settings
+from app.db import get_session
 from app.flood.client import get_flood_client
+from app.location_intelligence.readiness import readiness_rows
+from app.location_intelligence.registry import current_layer_versions
 from app.location_intelligence.router import router as locations_router
 
 settings = get_settings()
@@ -46,6 +52,17 @@ async def flood_meta() -> dict:
         return {"status": "ok", "ggis": await get_flood_client().meta()}
     except Exception as exc:  # noqa: BLE001 — degrade gracefully, never 500 the meta probe
         return {"status": "degraded", "error": str(exc)}
+
+
+@meta.get("/v1/meta/readiness")
+async def domain_readiness(session: AsyncSession = Depends(get_session)) -> dict:
+    """Phase 1 domain readiness vs published `layer_registry` versions."""
+    versions = await current_layer_versions(session)
+    return {
+        "status": "ok",
+        "layer_versions": versions,
+        "domains": readiness_rows(versions),
+    }
 
 
 app.include_router(meta)

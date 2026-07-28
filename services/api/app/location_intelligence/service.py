@@ -1,9 +1,10 @@
 """Scorecard orchestration.
 
 Phase 1 status per domain (Tier discipline, Overview §4):
-  * flood        — LIVE via GGIS Flood Watch (Tier 1, wired now).
-  * accessibility / amenities / feasibility — Tier 1, pipelines land as OSM/DEM
-    ETL completes; returned as `pending` until their layers are published.
+  * flood        — LIVE via GGIS Flood Watch (risk + factors + last_event + history).
+  * amenities    — LIVE when `poi` layer is published (PostGIS KNN + fct-v1).
+  * accessibility — LIVE when roads/poi published; landmark time proxies always when scoring.
+  * feasibility  — LIVE when `dem` published (DEM samples + flood + utilities).
   * security / tenure / market / livability — Tier 2–3, later phases.
 
 No domain is surfaced without a defined pipeline behind it: domains without a
@@ -11,9 +12,27 @@ live pipeline return status="pending" rather than a fabricated score.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.flood.client import FloodStatus, GGISFloodClient, get_flood_client
+from app.location_intelligence.accessibility import (
+    nearest_road_distance_m,
+    score_accessibility,
+)
+from app.location_intelligence.amenities import nearest_poi_distances, score_amenities
+from app.location_intelligence.feasibility import (
+    nearest_dem_sample,
+    nearest_utility_distance_m,
+    score_feasibility,
+)
+from app.location_intelligence.readiness import (
+    LATER_DOMAINS,
+    TIER1_REQUIRED_LAYERS,
+    layers_ready,
+    pending_note,
+)
 from app.location_intelligence.schemas import (
     AnalyzeRequest,
     DomainResult,
@@ -24,11 +43,6 @@ from app.scoring.engine import DomainScore
 
 if TYPE_CHECKING:
     from app.cache import ScorecardCache
-
-# Domains whose Tier-1 pipelines are not yet published in this build.
-_PENDING_TIER1 = ("amenities", "accessibility", "feasibility")
-# Tier 2–3 domains (community/market/security/tenure) — later phases.
-_PENDING_LATER = ("security", "tenure", "market", "livability")
 
 
 def _geohash8(lon: float, lat: float) -> str:
@@ -65,11 +79,106 @@ def _point_of(req: AnalyzeRequest) -> tuple[float, float]:
     g = req.geometry
     if g.type == "Point":
         return float(g.coordinates[0]), float(g.coordinates[1])
-    # Polygon: use the first ring's centroid-ish first vertex for Phase 1 keying.
     ring = g.coordinates[0]
     lons = [p[0] for p in ring]
     lats = [p[1] for p in ring]
     return sum(lons) / len(lons), sum(lats) / len(lats)
+
+
+def domainscore_to_result(ds: DomainScore, status: str = "ok") -> DomainResult:
+    return DomainResult(
+        score=ds.score,
+        confidence=ds.confidence,
+        status=status,  # type: ignore[arg-type]
+        evidence=ds.indicators,
+        note=ds.note,
+    )
+
+
+def _pending(domain: str, versions: dict[str, str]) -> DomainResult:
+    return DomainResult(
+        score=None,
+        confidence="Low",
+        status="pending",
+        note=pending_note(domain, versions),
+    )
+
+
+def _flood_evidence(fr: Any) -> dict[str, Any]:
+    evidence: dict[str, Any] = {
+        "risk_class": fr.risk_class,
+        "risk_score": fr.risk_score,
+        "model_version": fr.model_version,
+        "data_currency": fr.data_currency,
+        **(fr.factors or {}),
+    }
+    if fr.last_event:
+        evidence["last_event"] = fr.last_event
+    if fr.history_events:
+        evidence["history_events"] = fr.history_events[:5]
+    return evidence
+
+
+async def _score_amenities(
+    session: AsyncSession | None, lon: float, lat: float, versions: dict[str, str]
+) -> DomainResult:
+    required = TIER1_REQUIRED_LAYERS["amenities"]
+    if not layers_ready(versions, required) or session is None:
+        return _pending("amenities", versions)
+    distances = await nearest_poi_distances(session, lon, lat)
+    if all(v is None for v in distances.values()):
+        return DomainResult(
+            score=None,
+            confidence="Low",
+            status="degraded",
+            evidence={},
+            note="POI layer published but no amenities found near this location.",
+        )
+    return domainscore_to_result(score_amenities(distances), status="ok")
+
+
+async def _score_accessibility(
+    session: AsyncSession | None, lon: float, lat: float, versions: dict[str, str]
+) -> DomainResult:
+    required = TIER1_REQUIRED_LAYERS["accessibility"]
+    if not layers_ready(versions, required) or session is None:
+        return _pending("accessibility", versions)
+    road_m = await nearest_road_distance_m(session, lon, lat)
+    return domainscore_to_result(
+        score_accessibility(road_m, lon=lon, lat=lat),
+        status="ok",
+    )
+
+
+async def _score_feasibility(
+    session: AsyncSession | None,
+    lon: float,
+    lat: float,
+    versions: dict[str, str],
+    flood_normalised: float | None,
+) -> DomainResult:
+    required = TIER1_REQUIRED_LAYERS["feasibility"]
+    if not layers_ready(versions, required) or session is None:
+        return _pending("feasibility", versions)
+    dem = await nearest_dem_sample(session, lon, lat)
+    if dem is None:
+        return DomainResult(
+            score=None,
+            confidence="Low",
+            status="degraded",
+            evidence={},
+            note="DEM layer published but no terrain samples near this location.",
+        )
+    util = await nearest_utility_distance_m(session, lon, lat)
+    return domainscore_to_result(
+        score_feasibility(
+            slope_deg=dem["slope_deg"],
+            flood_normalised=flood_normalised,
+            utility_distance_m=util,
+            twi=dem["twi"],
+        ),
+        status="ok",
+    )
 
 
 async def analyze(
@@ -77,20 +186,14 @@ async def analyze(
     flood: GGISFloodClient | None = None,
     versions: dict[str, str] | None = None,
     cache: ScorecardCache | None = None,
+    session: AsyncSession | None = None,
 ) -> ScorecardResponse:
-    """Compute (or serve from cache) the eight-domain scorecard.
-
-    `versions` are the current published layer versions (from `layer_registry`);
-    they stamp the scorecard and form part of the cache key, so an ETL layer bump
-    changes the key and the next request recomputes. `cache` and `versions` are
-    optional so the function stays unit-testable without Redis or a database.
-    """
+    """Compute (or serve from cache) the eight-domain scorecard."""
     flood = flood or get_flood_client()
     lon, lat = _point_of(req)
     gh8 = _geohash8(lon, lat)
     versions = versions or {}
 
-    # --- Cache lookup (keyed by profile + geohash8 + layer versions) ---
     cache_key = None
     if cache is not None:
         cache_key = cache.make_key(req.profile, gh8, versions)
@@ -100,23 +203,23 @@ async def analyze(
             return ScorecardResponse.model_validate(hit)
 
     domains: dict[str, DomainResult] = {}
-    # Stamp with the registry versions in force; live hazard version added below.
     layer_versions: dict[str, str] = dict(versions)
 
     # --- Flood (live GGIS call, Tier 1) ---
     fr = await flood.risk(req.geometry.model_dump())
+    if hasattr(flood, "history") and fr.status is FloodStatus.OK:
+        try:
+            fr.history_events = await flood.history(lon, lat)
+        except Exception:  # noqa: BLE001 — history is enrichment, never fail analyze
+            fr.history_events = []
+
     if fr.normalised is not None:
         flood_score = round(100 * fr.normalised, 1)
         domains["flood"] = DomainResult(
             score=flood_score,
             confidence=fr.confidence or "Medium",
             status="degraded" if fr.status is FloodStatus.DEGRADED else "ok",
-            evidence={
-                "risk_class": fr.risk_class,
-                "model_version": fr.model_version,
-                "data_currency": fr.data_currency,
-                **fr.factors,
-            },
+            evidence=_flood_evidence(fr),
             note=fr.message,
         )
         if fr.model_version:
@@ -129,19 +232,15 @@ async def analyze(
             note=fr.message or "Flood domain temporarily unavailable",
         )
 
-    # --- Tier-1 domains awaiting their published ETL layers ---
-    for d in _PENDING_TIER1:
-        domains[d] = DomainResult(
-            score=None, confidence="Low", status="pending",
-            note="Pipeline scheduled - OSM/DEM ETL in progress (Phase 1).",
-        )
+    # --- Tier-1 domains gated by published ETL layers ---
+    domains["amenities"] = await _score_amenities(session, lon, lat, versions)
+    domains["accessibility"] = await _score_accessibility(session, lon, lat, versions)
+    domains["feasibility"] = await _score_feasibility(
+        session, lon, lat, versions, fr.normalised
+    )
 
-    # --- Tier 2-3 domains (later phases) ---
-    for d in _PENDING_LATER:
-        domains[d] = DomainResult(
-            score=None, confidence="Low", status="pending",
-            note="Ships in a later phase (Tier 2-3).",
-        )
+    for d in LATER_DOMAINS:
+        domains[d] = _pending(d, versions)
 
     response = ScorecardResponse(
         location=LocationInfo(geohash8=gh8),
@@ -155,10 +254,3 @@ async def analyze(
         await cache.set(cache_key, response.model_dump())
 
     return response
-
-
-def domainscore_to_result(ds: DomainScore, status: str = "ok") -> DomainResult:
-    return DomainResult(
-        score=ds.score, confidence=ds.confidence, status=status,  # type: ignore[arg-type]
-        evidence=ds.indicators, note=ds.note,
-    )

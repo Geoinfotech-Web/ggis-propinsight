@@ -22,7 +22,7 @@ Project Overview (v1.2), Technical Design Document (v1.1), and Implementation Pl
 | Google Earth Engine DEM source | ⚠️ code done; **blocked on GCP IAM** (see §5) |
 | React + MapLibre web shell (click-to-analyse) | ✅ runs locally |
 | CI (api + etl + web) | ✅ done |
-| Amenity / accessibility domains wired to live data | ⛔ not started (next) |
+| Amenity / accessibility / feasibility domains | ⚠️ scoring wired; FCT demo seed (`0003`) publishes poi/roads/dem for local analyse |
 
 **Flood** is the only domain returning a live score; the other Tier-1 domains
 (`amenities`, `accessibility`, `feasibility`) return `status: "pending"` until
@@ -151,14 +151,15 @@ Key files:
 1. **Unblock GEE IAM** (§5) and run `dem_from_gee` to produce the first real
    slope/flow-accumulation/TWI COGs for FCT.
 2. **OSM roads & POIs ETL** — run `refresh_osm` (needs a Geofabrik extract) to
-   populate `poi`/`roads`, flipping `amenities` and `accessibility` from `pending`
-   to live. Then wire those domains' scoring in `service.py` using the OSRM/Valhalla
-   routing and PostGIS KNN queries.
+   populate `poi`/`roads`, flipping `amenities` from `pending` to live (scoring
+   is already wired). Then finish accessibility via OSRM/Valhalla travel times.
 3. **Serve DEM/hazard tiles** via TiTiler + `martin`, and register a `layer switcher`
    in the web app.
 4. **Persist scorecards to the `scores` table** (not just Redis) so the ETL
    `sweep_stale_scores` has durable rows to invalidate.
-5. **Branch protection** on `main` + require CI, then move to PR-based flow.
+5. **Check domain readiness** — `GET /v1/meta/readiness` (and
+   `etl/aia_etl/domain_deps.py`) for the Phase 1 unlock matrix.
+6. **Branch protection** on `main` + require CI, then move to PR-based flow.
 
 ---
 

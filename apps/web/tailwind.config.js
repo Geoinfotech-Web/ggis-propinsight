@@ -1,13 +1,13 @@
 /** @type {import('tailwindcss').Config} */
+import { ggisColors, ggisFontFamily } from "./src/theme.tokens.js";
+
 export default {
+  darkMode: ["selector", '[data-theme="dark"]'],
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
-      colors: {
-        navy: "#0F2A4A",
-        brandblue: "#1B6CA8",
-        teal: "#1F8A70",
-      },
+      fontFamily: ggisFontFamily,
+      colors: ggisColors,
     },
   },
   plugins: [],

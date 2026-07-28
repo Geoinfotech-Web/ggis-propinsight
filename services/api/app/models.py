@@ -70,6 +70,31 @@ class Poi(Base):
     layer_version: Mapped[str] = mapped_column(String(20), index=True)
 
 
+class Road(Base):
+    """Road centreline for accessibility proximity (OSM-derived)."""
+
+    __tablename__ = "roads"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    geom: Mapped[object] = mapped_column(Geometry("LINESTRING", srid=SRID))
+    highway: Mapped[str | None] = mapped_column(String(40))
+    name: Mapped[str | None] = mapped_column(String(200))
+    layer_version: Mapped[str] = mapped_column(String(20), index=True)
+
+
+class DemSample(Base):
+    """Point samples of DEM derivatives for feasibility until COG/TiTiler sampling lands."""
+
+    __tablename__ = "dem_samples"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    geom: Mapped[object] = mapped_column(Geometry("POINT", srid=SRID))
+    elevation_m: Mapped[float] = mapped_column(Float)
+    slope_deg: Mapped[float] = mapped_column(Float)
+    twi: Mapped[float] = mapped_column(Float)
+    layer_version: Mapped[str] = mapped_column(String(20), index=True)
+
+
 class PlanningLayer(Base):
     """Tenure/planning overlays. kind ∈ acquisition|layout|setback|corridor|greenbelt."""
 
@@ -207,6 +232,8 @@ class ApiKey(Base):
 Index("ix_districts_geom", District.geom, postgresql_using="gist")
 Index("ix_locations_geom", Location.geom, postgresql_using="gist")
 Index("ix_poi_geom", Poi.geom, postgresql_using="gist")
+Index("ix_roads_geom", Road.geom, postgresql_using="gist")
+Index("ix_dem_samples_geom", DemSample.geom, postgresql_using="gist")
 Index("ix_planning_geom", PlanningLayer.geom, postgresql_using="gist")
 Index("ix_reviews_geom", Review.geom, postgresql_using="gist")
 Index("ix_market_geom", MarketSample.geom, postgresql_using="gist")

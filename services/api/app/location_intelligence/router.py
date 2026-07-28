@@ -25,4 +25,4 @@ async def analyze_location(
     result (Redis, keyed by geohash8 + versions + profile).
     """
     versions = await current_layer_versions(session)
-    return await analyze(req, versions=versions, cache=cache)
+    return await analyze(req, versions=versions, cache=cache, session=session)

@@ -22,6 +22,15 @@ of cache correctness — implement it before wiring the first ETL job.
 
 ## Phase 1 priorities (FCT pilot)
 
+Domain readiness is gated by published `layer_registry` versions — see
+`aia_etl/domain_deps.py` (single source of truth for domain → layer → task).
+
+| Priority | Pipeline | Unlocks |
+|---|---|---|
+| 1 | `refresh_osm` (Geofabrik extract) | `amenities` (POI KNN), `accessibility` data |
+| 2 | `dem_from_gee` / `terrain_derivatives` | `feasibility` terrain inputs (GEE IAM may block) |
+| 3 | `mirror_hazard_tiles` | Map resilience if GGIS is down (flood scores stay live) |
+
 1. OSM roads & POIs for FCT → PostGIS.
 2. Copernicus/SRTM DEM → slope + flow accumulation + TWI → COG → TiTiler.
 3. GGIS hazard tile mirror (COG) so map rendering survives GGIS downtime.
@@ -30,6 +39,7 @@ of cache correctness — implement it before wiring the first ETL job.
 
 | Module | Responsibility |
 |---|---|
+| `domain_deps.py` | Domain → required layers → Celery tasks readiness map (Phase 1 unlock order). |
 | `layers.py` | The `layer_version` backbone: CalVer versioning, `bump_layer`, and the `sweep_stale_scores` cache-invalidation. **Built and tested first**, per the note above. |
 | `celery_app.py` | Celery app + beat schedule for the §4.6 refresh cycles. |
 | `poi_categories.py` | OSM tag → AIA `poi.category` mapping (school/hospital/water/…). |

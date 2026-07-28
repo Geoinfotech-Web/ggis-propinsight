@@ -21,7 +21,7 @@ import hashlib
 import hmac
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -56,6 +56,8 @@ class FloodResult:
     model_version: str | None
     data_currency: str | None
     confidence: str | None
+    last_event: dict[str, Any] | None = None
+    history_events: list[dict[str, Any]] = field(default_factory=list)
     stale: bool = False                 # True when served from cache during degradation
     message: str | None = None
 
@@ -99,6 +101,9 @@ class GGISFloodClient:
             return self._degrade(last_known, str(exc))
 
         risk_class = data.get("risk_class")
+        last_event = data.get("last_event")
+        if not isinstance(last_event, dict):
+            last_event = None
         return FloodResult(
             status=FloodStatus.OK,
             risk_class=risk_class,
@@ -108,7 +113,28 @@ class GGISFloodClient:
             model_version=data.get("model_version"),
             data_currency=data.get("data_currency"),
             confidence=data.get("confidence"),
+            last_event=last_event,
         )
+
+    async def history(self, lon: float | None = None, lat: float | None = None) -> list[dict[str, Any]]:
+        """Observed inundation events near a point (Phase 1: global list from GGIS)."""
+        path = "/v1/flood/history"
+        params: dict[str, float] = {}
+        if lon is not None and lat is not None:
+            params = {"lon": lon, "lat": lat}
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as c:
+                resp = await c.get(
+                    f"{self.base_url}{path}",
+                    params=params or None,
+                    headers=_headers("GET", path, b""),
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except (httpx.HTTPError, ValueError):
+            return []
+        events = data.get("events", [])
+        return events if isinstance(events, list) else []
 
     @staticmethod
     def _degrade(last_known: FloodResult | None, reason: str) -> FloodResult:
@@ -122,6 +148,8 @@ class GGISFloodClient:
                 model_version=last_known.model_version,
                 data_currency=last_known.data_currency,
                 confidence="Low",
+                last_event=last_known.last_event,
+                history_events=list(last_known.history_events),
                 stale=True,
                 message=f"GGIS unreachable; serving last-known class. ({reason})",
             )

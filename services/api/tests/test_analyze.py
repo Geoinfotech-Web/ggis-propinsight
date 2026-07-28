@@ -14,10 +14,15 @@ class _StubFlood:
     def __init__(self, result: FloodResult) -> None:
         self._result = result
         self.calls = 0
+        self.history_calls = 0
 
     async def risk(self, geometry, last_known=None):  # noqa: ANN001
         self.calls += 1
         return self._result
+
+    async def history(self, lon=None, lat=None):  # noqa: ANN001
+        self.history_calls += 1
+        return [{"date": "2025-09-14", "severity": "moderate", "source": "Sentinel-1"}]
 
 
 class _FakeCache:
@@ -58,6 +63,7 @@ async def test_analyze_returns_all_eight_domains():
     assert res.domains["flood"].score == 20.0  # 100 * 0.2
     assert res.domains["flood"].status == "ok"
     assert res.layer_versions["hazard"] == "ggis-fw-2.3"
+    assert "history_events" in res.domains["flood"].evidence
 
 
 @pytest.mark.asyncio
@@ -85,6 +91,7 @@ async def test_pending_domains_have_no_fabricated_score():
     res = await analyze(_req(), flood=_StubFlood(ok))  # type: ignore[arg-type]
     assert res.domains["amenities"].status == "pending"
     assert res.domains["amenities"].score is None
+    assert "poi" in (res.domains["amenities"].note or "")
 
 
 def _ok_flood() -> FloodResult:

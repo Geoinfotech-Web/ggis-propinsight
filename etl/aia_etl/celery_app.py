@@ -37,6 +37,8 @@ app.conf.update(
 )
 
 # Periodic schedule. Times are in the configured timezone (Africa/Lagos).
+# Manual Phase 1 unlock order (see aia_etl.domain_deps.PHASE1_PIPELINE_PRIORITY):
+#   1) refresh_osm  2) dem_from_gee  3) mirror_hazard_tiles
 app.conf.beat_schedule = {
     "osm-monthly": {
         "task": "aia_etl.tasks.osm.refresh_osm",
