@@ -4,11 +4,9 @@ import maplibregl from "maplibre-gl";
 import { analyzePoint, type Scorecard } from "./api";
 import { AppHeader } from "./components/AppHeader";
 import { BasemapSwitcher } from "./components/BasemapSwitcher";
-import {
-  LayersLegendPanel,
-  type OverlayLayer,
-  type OverlayLayerId,
-} from "./components/LayersLegendPanel";
+import { IconHome } from "./components/Icons";
+import { LayersPanel, type OverlayLayer, type OverlayLayerId } from "./components/LayersPanel";
+import { MapLegend } from "./components/MapLegend";
 import { ScorecardConsole } from "./components/ScorecardConsole";
 import {
   DEFAULT_BASEMAP_ID,
@@ -18,6 +16,7 @@ import {
 import { applyTheme, loadTheme, type Theme } from "./theme";
 
 const FCT_CENTER: [number, number] = [7.4913, 9.0579];
+const FCT_HOME_ZOOM = 11;
 
 const DEFAULT_LAYERS: OverlayLayer[] = [
   {
@@ -246,9 +245,52 @@ export default function App() {
         <main className="relative h-full min-h-0 min-w-0 flex-1">
           <div ref={mapContainer} className="h-full w-full bg-slate-200" />
 
-          {/* Zoom stays top-right; overlays live bottom-left */}
-          <LayersLegendPanel theme={theme} layers={layers} onToggle={toggleLayer} />
-          <BasemapSwitcher theme={theme} activeId={basemapId} onChange={setBasemapId} />
+          {/* Flood Watch MapPanel layout: Layers top-left · Legend bottom-left · Home+Basemap under zoom */}
+          <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100vw-5.5rem)] space-y-2 sm:max-w-none">
+            <div className="pointer-events-auto">
+              <LayersPanel theme={theme} layers={layers} onToggle={toggleLayer} />
+            </div>
+          </div>
+
+          <div className="pointer-events-none absolute top-[5.5rem] right-3 z-10 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                mapRef.current?.flyTo({ center: FCT_CENTER, zoom: FCT_HOME_ZOOM, duration: 1000 });
+              }}
+              className={clsx(
+                "pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border shadow-lg transition",
+                dark
+                  ? "border-gray-700 bg-gray-900 text-gray-200 hover:border-gray-500 hover:bg-gray-800 hover:text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900",
+              )}
+              style={
+                dark
+                  ? { backgroundColor: "#111827", borderColor: "#374151" }
+                  : { backgroundColor: "#ffffff", borderColor: "#cbd5e1" }
+              }
+              aria-label="Reset map to FCT"
+              title="Home"
+            >
+              <IconHome size={15} />
+            </button>
+            <div className="pointer-events-auto">
+              <BasemapSwitcher theme={theme} activeId={basemapId} onChange={setBasemapId} />
+            </div>
+          </div>
+
+          <div
+            className={clsx(
+              "pointer-events-none absolute left-3 z-10 hidden sm:block",
+              sheetOpen
+                ? "bottom-[calc(min(48vh,26rem)+0.75rem)] lg:bottom-10"
+                : "bottom-10",
+            )}
+          >
+            <div className="pointer-events-auto">
+              <MapLegend theme={theme} layers={layers} />
+            </div>
+          </div>
 
           {mapError && (
             <div className="absolute inset-x-4 top-3 z-[2] rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 sm:left-auto sm:right-14 sm:w-72">
