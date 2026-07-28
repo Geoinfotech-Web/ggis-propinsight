@@ -100,6 +100,26 @@ class ScoringProfile(Base):
     valid_from: Mapped[date] = mapped_column(Date, server_default=func.current_date())
 
 
+class LayerRegistry(Base):
+    """Current published version per data layer — the source of truth for the
+    `layer_version` discipline (TDD §4.3, §6.1).
+
+    ETL bumps a layer's version on each publish; a Celery sweep then invalidates
+    cached `scores` whose `layer_versions` reference an older version. The API
+    stamps freshly computed scorecards with the versions read from here.
+    """
+
+    __tablename__ = "layer_registry"
+
+    layer: Mapped[str] = mapped_column(String(32), primary_key=True)  # poi|roads|hazard|dem|...
+    version: Mapped[str] = mapped_column(String(32))
+    source: Mapped[str | None] = mapped_column(String(120))
+    notes: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Score(Base):
     """Cached scorecards, keyed by location hash + scoring profile + layer versions."""
 

@@ -41,6 +41,26 @@ jobs:
       - name: Pytest
         run: pytest -q
 
+  etl:
+    name: ETL — lint & pure-logic tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: etl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The geo stack (rasterio/pysheds) needs system GDAL and runs in the ETL
+      # image; here we install only what the pure-logic tests need.
+      - name: Install test deps
+        run: pip install ruff pytest "sqlalchemy>=2.0"
+      - name: Ruff (lint)
+        run: ruff check aia_etl tests
+      - name: Pytest (pure logic)
+        run: python -m pytest -q
+
   web:
     name: Web — type-check & build
     runs-on: ubuntu-latest

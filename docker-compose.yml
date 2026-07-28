@@ -62,5 +62,38 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
+  etl-worker:
+    build: ./etl
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      GGIS_FLOOD_BASE_URL: http://mock-ggis:9100
+      DATA_DIR: /data
+    volumes:
+      - ./etl:/etl
+      - geodata:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A aia_etl.celery_app worker --loglevel=INFO
+
+  etl-beat:
+    build: ./etl
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./etl:/etl
+      - geodata:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A aia_etl.celery_app beat --loglevel=INFO
+
 volumes:
   pgdata:
+  geodata:
