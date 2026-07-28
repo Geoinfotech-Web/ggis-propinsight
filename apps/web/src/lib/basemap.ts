@@ -22,6 +22,8 @@ function rasterStyle(
 ): StyleSpecification {
   return {
     version: 8,
+    // Required for symbol text-field (amenity name labels).
+    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
     sources: {
       [id]: {
         type: "raster",

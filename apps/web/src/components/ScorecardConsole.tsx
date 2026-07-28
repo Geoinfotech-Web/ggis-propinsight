@@ -97,7 +97,9 @@ function formatEvidenceValue(key: string, value: unknown): string {
   if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, unknown>;
     if (typeof obj.distance_m === "number") {
-      const parts = [formatMetres(obj.distance_m)];
+      const parts: string[] = [];
+      if (typeof obj.name === "string" && obj.name.trim()) parts.push(obj.name.trim());
+      parts.push(formatMetres(obj.distance_m));
       if (typeof obj.est_minutes === "number") parts.push(`~${obj.est_minutes} min`);
       return parts.join(" · ");
     }
@@ -133,6 +135,37 @@ function labelFor(domain: string, key: string): string {
   return key.replace(/_/g, " ");
 }
 
+type NearbyPoi = {
+  category: string;
+  name: string;
+  distance_m: number;
+  lon: number;
+  lat: number;
+};
+
+const NEARBY_ORDER = ["school", "hospital", "market", "bank"] as const;
+
+function parseNearby(evidence: Record<string, unknown>): NearbyPoi[] {
+  const raw = evidence.nearby;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const o = item as Record<string, unknown>;
+      if (typeof o.category !== "string" || typeof o.distance_m !== "number") return null;
+      if (typeof o.lon !== "number" || typeof o.lat !== "number") return null;
+      const name = typeof o.name === "string" && o.name.trim() ? o.name.trim() : AMENITY_LABELS[o.category] ?? o.category;
+      return { category: o.category, name, distance_m: o.distance_m, lon: o.lon, lat: o.lat };
+    })
+    .filter((x): x is NearbyPoi => x !== null)
+    .sort((a, b) => {
+      const ai = NEARBY_ORDER.indexOf(a.category as (typeof NEARBY_ORDER)[number]);
+      const bi = NEARBY_ORDER.indexOf(b.category as (typeof NEARBY_ORDER)[number]);
+      if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      return a.distance_m - b.distance_m;
+    });
+}
+
 function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<{ key: string; label: string; value: string }> {
   const preferred =
     domain === "amenities"
@@ -147,7 +180,7 @@ function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<
 
   const keys = preferred.filter((k) => k in evidence);
   for (const k of Object.keys(evidence)) {
-    if (!keys.includes(k) && k !== "history_events") keys.push(k);
+    if (!keys.includes(k) && k !== "history_events" && k !== "nearby") keys.push(k);
   }
 
   return keys.map((key) => ({
@@ -164,9 +197,20 @@ type Props = {
   error: string | null;
   placeLabel?: string | null;
   onClose?: () => void;
+  onViewNearbyList?: () => void;
 };
 
-export function ScorecardConsole({ theme, card, loading, error, placeLabel, onClose }: Props) {
+const PREVIEW_PER_CATEGORY = 2;
+
+export function ScorecardConsole({
+  theme,
+  card,
+  loading,
+  error,
+  placeLabel,
+  onClose,
+  onViewNearbyList,
+}: Props) {
   const dark = theme === "dark";
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     amenities: true,
@@ -361,6 +405,115 @@ export function ScorecardConsole({ theme, card, loading, error, placeLabel, onCl
                             </tbody>
                           </table>
                         )}
+
+                        {d === "amenities" && (() => {
+                          const nearby = parseNearby(r.evidence ?? {});
+                          const groups = NEARBY_ORDER.map((cat) => ({
+                            cat,
+                            items: nearby.filter((p) => p.category === cat),
+                          })).filter((g) => g.items.length > 0);
+                          const hasMore = groups.some((g) => g.items.length > PREVIEW_PER_CATEGORY)
+                            || nearby.length > PREVIEW_PER_CATEGORY * 2;
+                          return (
+                            <div className={clsx("mt-3 border-t pt-2.5", dark ? "border-gray-800" : "border-slate-100")}>
+                              <div className="mb-1.5 flex items-center justify-between gap-2">
+                                <p
+                                  className={clsx(
+                                    "text-[10px] font-semibold uppercase tracking-widest",
+                                    dark ? "text-gray-500" : "text-slate-400",
+                                  )}
+                                >
+                                  Nearby (5 km)
+                                </p>
+                                {nearby.length > 0 && onViewNearbyList && (
+                                  <button
+                                    type="button"
+                                    onClick={onViewNearbyList}
+                                    className={clsx(
+                                      "rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                      dark
+                                        ? "border-sky-700/60 bg-sky-950/40 text-sky-300 hover:bg-sky-900/50"
+                                        : "border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100",
+                                    )}
+                                  >
+                                    View list · {nearby.length}
+                                  </button>
+                                )}
+                              </div>
+                              {groups.length === 0 ? (
+                                <p className={clsx("text-[11px]", dark ? "text-gray-500" : "text-slate-400")}>
+                                  No named schools, hospitals, markets, or banks within 5 km.
+                                </p>
+                              ) : (
+                                <div className="space-y-2.5">
+                                  {groups.map(({ cat, items }) => {
+                                    const preview = items.slice(0, PREVIEW_PER_CATEGORY);
+                                    const extra = items.length - preview.length;
+                                    return (
+                                      <div key={cat}>
+                                        <p
+                                          className={clsx(
+                                            "mb-1 text-[10px] font-semibold",
+                                            dark ? "text-sky-400" : "text-sky-700",
+                                          )}
+                                        >
+                                          {AMENITY_LABELS[cat] ?? cat}
+                                          {items.length > 1 ? ` · ${items.length}` : ""}
+                                        </p>
+                                        <ul className="space-y-1">
+                                          {preview.map((p) => (
+                                            <li
+                                              key={`${p.category}-${p.name}-${p.distance_m}`}
+                                              className="flex items-baseline justify-between gap-2 text-[11px]"
+                                            >
+                                              <span className={clsx("min-w-0 truncate", dark ? "text-gray-200" : "text-slate-800")}>
+                                                {p.name}
+                                              </span>
+                                              <span
+                                                className={clsx(
+                                                  "shrink-0 tabular-nums",
+                                                  dark ? "text-gray-500" : "text-slate-400",
+                                                )}
+                                              >
+                                                {formatMetres(p.distance_m)}
+                                              </span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                        {extra > 0 && onViewNearbyList && (
+                                          <button
+                                            type="button"
+                                            onClick={onViewNearbyList}
+                                            className={clsx(
+                                              "mt-1 text-[10px] font-semibold",
+                                              dark ? "text-sky-400 hover:text-sky-300" : "text-sky-700 hover:text-sky-800",
+                                            )}
+                                          >
+                                            +{extra} more — view list
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                  {hasMore && onViewNearbyList && (
+                                    <button
+                                      type="button"
+                                      onClick={onViewNearbyList}
+                                      className={clsx(
+                                        "w-full rounded-lg border px-3 py-2 text-xs font-semibold",
+                                        dark
+                                          ? "border-gray-700 bg-gray-950/60 text-sky-300 hover:bg-gray-900"
+                                          : "border-slate-200 bg-slate-50 text-sky-800 hover:bg-sky-50",
+                                      )}
+                                    >
+                                      View all schools, hospitals, markets & banks
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {r.confidence && r.status !== "pending" && (
                           <p className={clsx("mt-2 text-[10px] uppercase tracking-wide", dark ? "text-gray-500" : "text-slate-400")}>

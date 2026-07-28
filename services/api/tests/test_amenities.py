@@ -30,5 +30,16 @@ def test_amenities_renormalises_over_present_indicators():
     assert ds.indicators["school"]["distance_m"] == 100.0
 
 
+def test_amenities_includes_name_in_evidence_raw():
+    nearest = {cat: None for cat in AMENITY_WEIGHTS}
+    nearest["school"] = {"distance_m": 420.4, "name": "Demo Primary School"}
+    nearest["hospital"] = {"distance_m": 800.0, "name": None}
+    ds = score_amenities(nearest)
+    assert ds.indicators["school"]["name"] == "Demo Primary School"
+    assert ds.indicators["school"]["distance_m"] == 420.4
+    assert "name" not in ds.indicators["hospital"]
+    assert ds.indicators["hospital"]["distance_m"] == 800.0
+
+
 def test_linear_decay_midpoint():
     assert linear_decay(2750, 500, 5000) == 0.5

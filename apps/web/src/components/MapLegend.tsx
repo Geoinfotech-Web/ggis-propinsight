@@ -1,5 +1,6 @@
 import { useState } from "react";
 import clsx from "clsx";
+import { AMENITY_MARKER_COLORS } from "../lib/amenitiesMap";
 import type { Theme } from "../theme";
 import type { OverlayLayer } from "./LayersPanel";
 import { IconChevronDown, IconChevronUp } from "./Icons";
@@ -9,6 +10,13 @@ const SCORE_LEGEND = [
   { label: "Moderate (40–69)", color: "#ca8a04" },
   { label: "Weak (0–39)", color: "#dc2626" },
   { label: "Pending / unavailable", color: "#94a3b8" },
+];
+
+const AMENITY_LEGEND = [
+  { id: "school", label: "School", color: AMENITY_MARKER_COLORS.school },
+  { id: "hospital", label: "Hospital / clinic", color: AMENITY_MARKER_COLORS.hospital },
+  { id: "market", label: "Market", color: AMENITY_MARKER_COLORS.market },
+  { id: "bank", label: "Bank", color: AMENITY_MARKER_COLORS.bank },
 ];
 
 type Props = {
@@ -22,6 +30,7 @@ export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) 
   const [collapsed, setCollapsed] = useState(collapsedByDefault);
   const dark = theme === "dark";
   const visibleOverlays = layers.filter((l) => l.enabled);
+  const showAmenityCats = layers.some((l) => l.id === "amenities_poi" && l.enabled);
 
   return (
     <div
@@ -83,6 +92,38 @@ export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) 
               ))}
             </div>
           </div>
+
+          {showAmenityCats && (
+            <div>
+              <p
+                className={clsx(
+                  "mb-1.5 text-[10px] font-semibold uppercase tracking-widest",
+                  dark ? "text-gray-500" : "text-slate-500",
+                )}
+              >
+                Amenities (5 km)
+              </p>
+              <div className="space-y-1.5">
+                {AMENITY_LEGEND.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ background: item.color }}
+                      aria-hidden
+                    />
+                    <span
+                      className={clsx(
+                        "text-[11px] font-medium",
+                        dark ? "text-gray-200" : "text-slate-800",
+                      )}
+                    >
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {visibleOverlays.length > 0 && (
             <div>

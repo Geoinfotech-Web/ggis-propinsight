@@ -21,7 +21,11 @@ from app.location_intelligence.accessibility import (
     nearest_road_distance_m,
     score_accessibility,
 )
-from app.location_intelligence.amenities import nearest_poi_distances, score_amenities
+from app.location_intelligence.amenities import (
+    nearest_pois,
+    pois_within_radius,
+    score_amenities,
+)
 from app.location_intelligence.feasibility import (
     nearest_dem_sample,
     nearest_utility_distance_m,
@@ -125,8 +129,8 @@ async def _score_amenities(
     required = TIER1_REQUIRED_LAYERS["amenities"]
     if not layers_ready(versions, required) or session is None:
         return _pending("amenities", versions)
-    distances = await nearest_poi_distances(session, lon, lat)
-    if all(v is None for v in distances.values()):
+    nearest = await nearest_pois(session, lon, lat)
+    if all(v is None for v in nearest.values()):
         return DomainResult(
             score=None,
             confidence="Low",
@@ -134,7 +138,11 @@ async def _score_amenities(
             evidence={},
             note="POI layer published but no amenities found near this location.",
         )
-    return domainscore_to_result(score_amenities(distances), status="ok")
+    result = domainscore_to_result(score_amenities(nearest), status="ok")
+    nearby = await pois_within_radius(session, lon, lat)
+    if nearby:
+        result.evidence["nearby"] = nearby
+    return result
 
 
 async def _score_accessibility(

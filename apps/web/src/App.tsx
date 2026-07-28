@@ -7,12 +7,20 @@ import { BasemapSwitcher } from "./components/BasemapSwitcher";
 import { IconHome } from "./components/Icons";
 import { LayersPanel, type OverlayLayer, type OverlayLayerId } from "./components/LayersPanel";
 import { MapLegend } from "./components/MapLegend";
+import { NearbyAmenitiesList, type NearbyPoiItem } from "./components/NearbyAmenitiesList";
 import { ScorecardConsole } from "./components/ScorecardConsole";
 import {
   DEFAULT_BASEMAP_ID,
   getBasemap,
   type BasemapId,
 } from "./lib/basemap";
+import {
+  AMENITY_CIRCLE_LAYER,
+  AMENITY_LABEL_LAYER,
+  AMENITY_SOURCE_ID,
+  nearbyFromScorecard,
+  nearbyToGeoJSON,
+} from "./lib/amenitiesMap";
 import { applyTheme, loadTheme, type Theme } from "./theme";
 
 const FCT_CENTER: [number, number] = [7.4913, 9.0579];
@@ -36,11 +44,66 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
   {
     id: "amenities_poi",
     label: "Amenity context",
-    description: "Nearby services in score evidence",
+    description: "Named schools, hospitals, markets, banks (5 km)",
     swatch: "#0d9488",
     enabled: true,
   },
 ];
+
+function syncAmenityOverlay(
+  map: maplibregl.Map,
+  card: Scorecard | null,
+  visible: boolean,
+) {
+  const pois = visible ? nearbyFromScorecard(card?.domains.amenities?.evidence) : [];
+  const data = nearbyToGeoJSON(pois);
+
+  if (map.getSource(AMENITY_SOURCE_ID)) {
+    (map.getSource(AMENITY_SOURCE_ID) as maplibregl.GeoJSONSource).setData(data);
+  } else {
+    map.addSource(AMENITY_SOURCE_ID, { type: "geojson", data });
+  }
+
+  if (!map.getLayer(AMENITY_CIRCLE_LAYER)) {
+    map.addLayer({
+      id: AMENITY_CIRCLE_LAYER,
+      type: "circle",
+      source: AMENITY_SOURCE_ID,
+      paint: {
+        "circle-radius": 6,
+        "circle-color": ["get", "color"],
+        "circle-stroke-width": 1.5,
+        "circle-stroke-color": "#ffffff",
+        "circle-opacity": 0.95,
+      },
+    });
+  }
+  if (!map.getLayer(AMENITY_LABEL_LAYER)) {
+    map.addLayer({
+      id: AMENITY_LABEL_LAYER,
+      type: "symbol",
+      source: AMENITY_SOURCE_ID,
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": ["Open Sans Regular"],
+        "text-size": 11,
+        "text-offset": [0, 1.15],
+        "text-anchor": "top",
+        "text-max-width": 10,
+        "text-optional": true,
+      },
+      paint: {
+        "text-color": "#0f172a",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.25,
+      },
+    });
+  }
+
+  const vis = visible && pois.length > 0 ? "visible" : "none";
+  if (map.getLayer(AMENITY_CIRCLE_LAYER)) map.setLayoutProperty(AMENITY_CIRCLE_LAYER, "visibility", vis);
+  if (map.getLayer(AMENITY_LABEL_LAYER)) map.setLayoutProperty(AMENITY_LABEL_LAYER, "visibility", vis);
+}
 
 export default function App() {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -59,6 +122,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(true);
+  const [amenitiesListOpen, setAmenitiesListOpen] = useState(false);
 
   useEffect(() => {
     applyTheme(theme);
@@ -182,9 +246,10 @@ export default function App() {
           .setLngLat(markerLngLat)
           .addTo(map);
       }
+      syncAmenityOverlay(map, card, layerEnabled("amenities_poi"));
       map.resize();
     });
-  }, [basemapId, layerEnabled]);
+  }, [basemapId, layerEnabled, card]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -200,6 +265,14 @@ export default function App() {
     }
   }, [layers, card, layerEnabled]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const apply = () => syncAmenityOverlay(map, card, layerEnabled("amenities_poi"));
+    if (map.isStyleLoaded()) apply();
+    else map.once("load", apply);
+  }, [card, layers, layerEnabled]);
+
   const flyAndAnalyse = (lon: number, lat: number, label?: string) => {
     const map = mapRef.current;
     if (map) {
@@ -214,6 +287,17 @@ export default function App() {
 
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
   const dark = theme === "dark";
+  const nearbyAmenities = nearbyFromScorecard(card?.domains.amenities?.evidence);
+
+  const focusNearby = (item: NearbyPoiItem) => {
+    if (item.lon == null || item.lat == null) return;
+    mapRef.current?.flyTo({
+      center: [item.lon, item.lat],
+      zoom: Math.max(mapRef.current.getZoom(), 15),
+      duration: 900,
+    });
+    setAmenitiesListOpen(false);
+  };
 
   return (
     <div
@@ -239,6 +323,7 @@ export default function App() {
             loading={loading}
             error={error}
             placeLabel={placeLabel}
+            onViewNearbyList={() => setAmenitiesListOpen(true)}
           />
         </div>
 
@@ -250,6 +335,22 @@ export default function App() {
             <div className="pointer-events-auto">
               <LayersPanel theme={theme} layers={layers} onToggle={toggleLayer} />
             </div>
+            {nearbyAmenities.length > 0 && layerEnabled("amenities_poi") && (
+              <div className="pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={() => setAmenitiesListOpen(true)}
+                  className={clsx(
+                    "inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-semibold shadow-lg",
+                    dark
+                      ? "border-gray-700 bg-gray-900 text-sky-300 hover:bg-gray-800"
+                      : "border-slate-200 bg-white text-sky-800 hover:border-slate-300",
+                  )}
+                >
+                  View amenities · {nearbyAmenities.length}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="pointer-events-none absolute top-[5.5rem] right-3 z-10 flex flex-col gap-2">
@@ -325,10 +426,19 @@ export default function App() {
               error={error}
               placeLabel={placeLabel}
               onClose={() => setSheetOpen(false)}
+              onViewNearbyList={() => setAmenitiesListOpen(true)}
             />
           </div>
         </div>
       </div>
+
+      <NearbyAmenitiesList
+        theme={theme}
+        items={nearbyAmenities}
+        open={amenitiesListOpen}
+        onClose={() => setAmenitiesListOpen(false)}
+        onSelect={focusNearby}
+      />
 
       <footer
         className={clsx(

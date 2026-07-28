@@ -22,16 +22,22 @@ depends_on = None
 LAYER = "2026.07.demo"
 
 
-# (lon, lat, category, name)
+# (lon, lat, category, name) — well-known FCT facilities (not generic Demo * placeholders)
 DEMO_POIS = [
-    (7.4950, 9.0600, "school", "Demo Primary School"),
-    (7.5000, 9.0550, "hospital", "Demo Clinic"),
-    (7.4880, 9.0500, "water", "Demo Borehole"),
-    (7.4920, 9.0650, "power", "Demo Substation"),
-    (7.4850, 9.0580, "isp", "Demo Fibre Hub"),
-    (7.4890, 9.0720, "market", "Wuse Market (demo)"),
-    (7.4980, 9.0620, "bank", "Demo Bank"),
-    (7.4800, 9.0450, "fuel", "Demo Filling Station"),
+    (7.4952, 9.0355, "school", "Government Secondary School Garki"),
+    (7.4685, 9.0648, "school", "Loyola Jesuit College"),
+    (7.4905, 9.0452, "school", "Queen's College Abuja"),
+    (7.4917, 9.0425, "hospital", "National Hospital Abuja"),
+    (7.4955, 9.0308, "hospital", "Garki Hospital"),
+    (7.4950, 9.0855, "hospital", "Maitama District Hospital"),
+    (7.4880, 9.0500, "water", "Area 1 Water Board"),
+    (7.4920, 9.0650, "power", "TCN Abuja Transmission Station"),
+    (7.4850, 9.0580, "isp", "MainOne Abuja PoP"),
+    (7.4890, 9.0720, "market", "Wuse Market"),
+    (7.4955, 9.0348, "market", "Garki International Market"),
+    (7.4950, 9.0525, "bank", "Central Bank of Nigeria"),
+    (7.4925, 9.0578, "bank", "Zenith Bank Central Area"),
+    (7.4800, 9.0450, "fuel", "TotalEnergies Asokoro"),
 ]
 
 # Simple road segments around Central Area (lon/lat pairs).
@@ -81,10 +87,9 @@ def upgrade() -> None:
             "CREATE INDEX IF NOT EXISTS ix_dem_samples_geom ON dem_samples USING GIST (geom)"
         )
 
-    # Seed only once (detect by demo POI name).
+    # Seed only once (detect any prior demo-seed POIs).
     already = bind.execute(
-        sa.text("SELECT COUNT(*) FROM poi WHERE name = :n"),
-        {"n": "Demo Primary School"},
+        sa.text("SELECT COUNT(*) FROM poi WHERE source = 'demo-seed'")
     ).scalar()
     if already:
         return
