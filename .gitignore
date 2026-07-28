@@ -55,3 +55,5 @@ Thumbs.db
 # ---- Docker / logs ----
 *.log
 .pgdata/
+# Local-only compose override (mounts host secrets); keep out of git.
+docker-compose.override.yml

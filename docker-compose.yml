@@ -48,7 +48,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       GGIS_FLOOD_BASE_URL: http://mock-ggis:9100
     ports:
-      - "8000:8000"
+      # Host 8001 to coexist with the GGIS Flood Watch stack (which uses 8000).
+      - "8001:8000"
     volumes:
       - ./services/api:/app
     depends_on:

@@ -133,14 +133,14 @@ async def analyze(
     for d in _PENDING_TIER1:
         domains[d] = DomainResult(
             score=None, confidence="Low", status="pending",
-            note="Pipeline scheduled — OSM/DEM ETL in progress (Phase 1).",
+            note="Pipeline scheduled - OSM/DEM ETL in progress (Phase 1).",
         )
 
-    # --- Tier 2–3 domains (later phases) ---
+    # --- Tier 2-3 domains (later phases) ---
     for d in _PENDING_LATER:
         domains[d] = DomainResult(
             score=None, confidence="Low", status="pending",
-            note="Ships in a later phase (Tier 2–3).",
+            note="Ships in a later phase (Tier 2-3).",
         )
 
     response = ScorecardResponse(
