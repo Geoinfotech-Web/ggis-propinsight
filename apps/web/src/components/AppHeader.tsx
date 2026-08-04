@@ -1,9 +1,10 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { getCurrentPosition } from "../lib/geocode";
-import { PERSONAS, type PersonaKey } from "../lib/personas";
+import { type PersonaKey } from "../lib/personas";
 import type { Theme } from "../theme";
 import { IconBrandMark, IconLocate, IconMoon, IconSun } from "./Icons";
+import { PersonaSelect } from "./PersonaSelect";
 import { SearchBar } from "./SearchBar";
 
 type Props = {
@@ -118,7 +119,8 @@ export function AppHeader({
             </div>
           </div>
 
-          <div className="mx-auto hidden min-w-0 w-full max-w-md flex-1 items-center gap-2 sm:flex">
+          <div className="mx-auto hidden min-w-0 w-full max-w-xl flex-1 items-center gap-2 sm:flex">
+            <PersonaSelect theme={theme} persona={persona} onPersonaChange={onPersonaChange} />
             <div className="min-w-0 flex-1">
               <SearchBar
                 theme={theme}
@@ -143,42 +145,6 @@ export function AppHeader({
               <span className="text-[11px] font-medium">Live</span>
             </div>
 
-            <div
-              className={clsx(
-                "inline-flex max-w-[min(100vw-8rem,28rem)] overflow-x-auto rounded-lg border p-0.5",
-                dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-slate-100",
-              )}
-              role="tablist"
-              aria-label="Target user"
-            >
-              {PERSONAS.map((p) => {
-                const active = persona === p.key;
-                return (
-                  <button
-                    key={p.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    title={p.blurb}
-                    onClick={() => onPersonaChange(p.key)}
-                    className={clsx(
-                      "shrink-0 rounded-md px-2 py-1.5 text-[11px] font-semibold transition sm:px-2.5 sm:py-1",
-                      active
-                        ? dark
-                          ? "bg-sky-600 text-white"
-                          : "bg-sky-700 text-white"
-                        : dark
-                          ? "text-gray-400 hover:text-white"
-                          : "text-slate-500 hover:text-slate-900",
-                    )}
-                  >
-                    <span className="sm:hidden">{p.shortLabel}</span>
-                    <span className="hidden sm:inline">{p.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
             <button
               type="button"
               onClick={onToggleTheme}
@@ -197,6 +163,7 @@ export function AppHeader({
         </div>
 
         <div className="flex items-center gap-2 sm:hidden">
+          <PersonaSelect theme={theme} persona={persona} onPersonaChange={onPersonaChange} />
           <div className="min-w-0 flex-1">
             <SearchBar
               theme={theme}
