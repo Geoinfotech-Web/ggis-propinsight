@@ -65,6 +65,20 @@ const FEASIBILITY_LABELS: Record<string, string> = {
   catchment: "Wetness (TWI)",
 };
 
+const SECURITY_LABELS: Record<string, string> = {
+  safety_level: "Safety level",
+  reported_incidents: "Reported incidents",
+  most_common: "Most common",
+  nearest_police: "Nearest police",
+  coverage: "Based on",
+};
+
+const TENURE_LABELS: Record<string, string> = {
+  headline: "Status",
+  advisory: "Advisory",
+  overlays: "Planning overlays",
+};
+
 function statusClasses(status: DomainResult["status"], dark: boolean): string {
   if (status === "ok") {
     return dark
@@ -133,7 +147,39 @@ function labelFor(domain: string, key: string): string {
   if (domain === "accessibility") return ACCESS_LABELS[key] ?? key.replace(/_/g, " ");
   if (domain === "flood") return FLOOD_LABELS[key] ?? key.replace(/_/g, " ");
   if (domain === "feasibility") return FEASIBILITY_LABELS[key] ?? key.replace(/_/g, " ");
+  if (domain === "security") return SECURITY_LABELS[key] ?? key.replace(/_/g, " ");
+  if (domain === "tenure") return TENURE_LABELS[key] ?? key.replace(/_/g, " ");
   return key.replace(/_/g, " ");
+}
+
+const SECURITY_ORDER = [
+  "safety_level",
+  "reported_incidents",
+  "most_common",
+  "nearest_police",
+  "coverage",
+] as const;
+
+function tenureRows(
+  evidence: Record<string, unknown>,
+): Array<{ key: string; label: string; value: string }> {
+  const rows: Array<{ key: string; label: string; value: string }> = [];
+  if (typeof evidence.headline === "string") {
+    rows.push({ key: "headline", label: "Status", value: evidence.headline });
+  }
+  const overlays = Array.isArray(evidence.overlays) ? evidence.overlays : [];
+  const text =
+    overlays.length === 0
+      ? "None mapped at this point"
+      : overlays
+          .map((o) => {
+            const x = o as Record<string, unknown>;
+            const kind = String(x.kind ?? "").replace(/_/g, " ");
+            return x.status ? `${kind} (${x.status})` : kind;
+          })
+          .join("; ");
+  rows.push({ key: "overlays", label: "Planning overlays", value: text });
+  return rows;
 }
 
 type NearbyPoi = {
@@ -171,8 +217,12 @@ function parseNearby(
 }
 
 function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<{ key: string; label: string; value: string }> {
+  if (domain === "tenure") return tenureRows(evidence);
+
   const preferred =
-    domain === "amenities"
+    domain === "security"
+      ? [...SECURITY_ORDER]
+      : domain === "amenities"
       ? Object.keys(AMENITY_LABELS)
       : domain === "accessibility"
         ? Object.keys(ACCESS_LABELS)

@@ -235,10 +235,7 @@ async def _score_security(
         by_category=None if incidents is None else incidents["by_category"],
         district=district["name"],
     )
-    result = domainscore_to_result(ds, status="ok")
-    result.evidence["district"] = district["name"]
-    result.evidence["aggregation"] = "district"
-    return result
+    return domainscore_to_result(ds, status="ok")
 
 
 async def _score_tenure(

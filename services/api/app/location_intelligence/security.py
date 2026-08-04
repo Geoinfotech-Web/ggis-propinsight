@@ -31,6 +31,81 @@ INCIDENTS_BAD = 30.0
 POLICE_D_MIN = 800.0
 POLICE_D_MAX = 6000.0
 
+# Plain-language safety bands from the 0..100 domain score (public-facing).
+_SAFETY_BANDS: tuple[tuple[float, str], ...] = (
+    (75.0, "Generally safe"),
+    (50.0, "Fairly safe"),
+    (25.0, "Some safety concerns"),
+    (0.0, "Significant safety concerns"),
+)
+
+_QUARTER_MONTHS: dict[str, str] = {
+    "Q1": "Jan–Mar",
+    "Q2": "Apr–Jun",
+    "Q3": "Jul–Sep",
+    "Q4": "Oct–Dec",
+}
+
+
+def safety_level(score: float | None) -> str | None:
+    if score is None:
+        return None
+    for threshold, label in _SAFETY_BANDS:
+        if score >= threshold:
+            return label
+    return _SAFETY_BANDS[-1][1]
+
+
+def _format_period(period: str | None) -> str | None:
+    """'2026-Q2' -> 'Apr–Jun 2026'; passes anything unexpected through."""
+    if not period:
+        return None
+    if "-Q" in period:
+        year, quarter = period.split("-", 1)
+        months = _QUARTER_MONTHS.get(quarter)
+        if months:
+            return f"{months} {year}"
+    return period
+
+
+def _breakdown(by_category: dict[str, int] | None) -> str | None:
+    if not by_category:
+        return None
+    parts = [f"{count} {cat}" for cat, count in sorted(by_category.items(), key=lambda kv: -kv[1])]
+    return ", ".join(parts)
+
+
+def _public_evidence(
+    score: float | None,
+    incident_total: int | None,
+    police_distance_m: float | None,
+    period: str | None,
+    by_category: dict[str, int] | None,
+    district: str | None,
+) -> dict[str, Any]:
+    """Display-ready, plain-language evidence for a public reader."""
+    ev: dict[str, Any] = {}
+    level = safety_level(score)
+    if level:
+        ev["safety_level"] = level
+
+    if incident_total is not None:
+        period_label = _format_period(period)
+        window = f" ({period_label})" if period_label else ""
+        noun = "report" if incident_total == 1 else "reports"
+        ev["reported_incidents"] = f"{incident_total} {noun}{window}"
+        breakdown = _breakdown(by_category)
+        if breakdown:
+            ev["most_common"] = breakdown
+    else:
+        ev["reported_incidents"] = "No recent incident data"
+
+    if police_distance_m is not None:
+        ev["nearest_police"] = {"distance_m": round(police_distance_m, 1)}
+
+    ev["coverage"] = f"District-level ({district})" if district else "District-level"
+    return ev
+
 
 def score_security(
     incident_total: int | None,
@@ -47,9 +122,7 @@ def score_security(
             if incident_total is None
             else linear_decay(float(incident_total), INCIDENTS_GOOD, INCIDENTS_BAD),
             weight=WEIGHTS["incident_rate"],
-            raw=None
-            if incident_total is None
-            else {"period": period, "total": incident_total, "by_category": by_category or {}},
+            raw=None,
         ),
         Indicator(
             key="police_proximity",
@@ -57,13 +130,18 @@ def score_security(
             if police_distance_m is None
             else linear_decay(police_distance_m, POLICE_D_MIN, POLICE_D_MAX),
             weight=WEIGHTS["police_proximity"],
-            raw=None if police_distance_m is None else {"distance_m": round(police_distance_m, 1)},
+            raw=None,
         ),
     ]
-    note = "District-level aggregate (no address-level crime mapping)."
+    note = "Neighbourhood-level safety read (no street-level crime data)."
     if district:
         note = f"{district}: {note}"
-    return score_domain("security", indicators, confidence="Medium", note=note)
+    ds = score_domain("security", indicators, confidence="Medium", note=note)
+    # Replace raw indicator dump with public-friendly, display-ready evidence.
+    ds.indicators = _public_evidence(
+        ds.score, incident_total, police_distance_m, period, by_category, district
+    )
+    return ds
 
 
 async def district_for_point(

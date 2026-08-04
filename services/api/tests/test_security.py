@@ -21,7 +21,24 @@ def test_closer_police_raises_score():
 def test_district_name_in_note_and_aggregate_framing():
     ds = score_security(incident_total=5, police_distance_m=700.0, district="Central Area")
     assert "Central Area" in (ds.note or "")
-    assert "district-level" in (ds.note or "").lower()
+    # Aggregate framing: never implies street-level crime data.
+    assert "street-level" in (ds.note or "").lower()
+
+
+def test_evidence_is_public_readable():
+    ds = score_security(
+        incident_total=11,
+        police_distance_m=419.3,
+        period="2026-Q2",
+        by_category={"theft": 8, "burglary": 3},
+        district="Central Area",
+    )
+    ev = ds.indicators
+    assert ev["safety_level"] == "Generally safe"
+    assert ev["reported_incidents"] == "11 reports (Apr–Jun 2026)"
+    assert ev["most_common"] == "8 theft, 3 burglary"
+    assert ev["nearest_police"] == {"distance_m": 419.3}
+    assert ev["coverage"] == "District-level (Central Area)"
 
 
 def test_missing_inputs_do_not_crash():
