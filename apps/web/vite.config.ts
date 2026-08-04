@@ -14,7 +14,10 @@ export default defineConfig({
     },
   },
   server: {
-    port: Number(process.env.PORT) || 5173,
+    // Stable port so the dev URL doesn't drift on restart. 5173 is taken by the
+    // GGIS Flood Watch frontend on this host, so AIA uses 5174.
+    port: Number(process.env.PORT) || 5174,
+    strictPort: true,
     fs: {
       allow: [repoRoot],
     },
