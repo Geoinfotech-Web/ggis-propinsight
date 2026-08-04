@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import type { Theme } from "../theme";
-import { IconChevronDown, IconChevronUp, IconLayers } from "./Icons";
+import { IconChevronLeft, IconLayers } from "./Icons";
 
 export type OverlayLayerId = "score_marker" | "flood_context" | "amenities_poi";
 
@@ -82,67 +82,103 @@ function Row({
   );
 }
 
-/** Flood Watch LayersPanel chrome — collapsible, sectioned toggles. */
+/**
+ * Flood Watch–style icon layers control: a 40×40 button matching the Home /
+ * basemap buttons, opening a left-hand popover of overlay toggles.
+ */
 export function LayersPanel({ theme, layers, onToggle }: Props) {
-  const [open, setOpen] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.matchMedia("(min-width: 768px)").matches;
-  });
+  const [expanded, setExpanded] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const dark = theme === "dark";
 
-  return (
-    <div
-      className={clsx(
-        "w-[min(15.5rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border shadow-xl",
-        dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white",
-      )}
-      style={
-        dark
-          ? { backgroundColor: "#111827", borderColor: "#374151" }
-          : { backgroundColor: "#ffffff", borderColor: "#e2e8f0" }
+  useEffect(() => {
+    if (!expanded) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setExpanded(false);
       }
-    >
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [expanded]);
+
+  const activeCount = layers.filter((l) => l.enabled).length;
+
+  return (
+    <div ref={rootRef} className="relative z-20">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setExpanded((v) => !v)}
+        title="Layers"
         className={clsx(
-          "flex w-full items-center justify-between gap-2 border-b px-3 py-2.5 text-left transition",
-          dark ? "border-gray-800 hover:bg-gray-800/50" : "border-slate-100 hover:bg-slate-50",
+          "inline-flex h-10 w-10 items-center justify-center rounded-xl border shadow-lg transition",
+          dark
+            ? "border-gray-700 bg-gray-900 text-gray-200 hover:border-gray-500 hover:bg-gray-800 hover:text-white"
+            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900",
         )}
-        aria-expanded={open}
+        style={
+          dark
+            ? { backgroundColor: "#111827", borderColor: "#374151" }
+            : { backgroundColor: "#ffffff", borderColor: "#cbd5e1" }
+        }
+        aria-label="Layers"
+        aria-expanded={expanded}
       >
-        <span className="inline-flex items-center gap-2">
-          <IconLayers size={14} className={dark ? "text-sky-400" : "text-sky-700"} />
-          <span
-            className={clsx(
-              "text-xs font-semibold uppercase tracking-wide",
-              dark ? "text-gray-200" : "text-slate-800",
-            )}
-          >
-            Layers
-          </span>
-        </span>
-        <span className={dark ? "text-gray-500" : "text-slate-400"}>
-          {open ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
+        <span className="relative inline-flex">
+          <IconLayers size={16} className={dark ? "text-gray-300" : "text-slate-600"} />
+          {activeCount > 0 && (
+            <span
+              className="absolute -bottom-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-semibold text-white shadow-sm"
+              style={{ border: `1px solid ${dark ? "#111827" : "#e2e8f0"}` }}
+            >
+              {activeCount}
+            </span>
+          )}
         </span>
       </button>
 
-      {open && (
-        <div className="max-h-[min(70vh,28rem)] space-y-3 overflow-y-auto p-3">
+      {expanded && (
+        <div
+          className={clsx(
+            "absolute right-full top-0 z-30 mr-2 w-[min(15.5rem,calc(100vw-4.5rem))] overflow-hidden rounded-lg border shadow-2xl",
+            dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white",
+          )}
+          style={
+            dark
+              ? { backgroundColor: "#111827", borderColor: "#374151" }
+              : { backgroundColor: "#ffffff", borderColor: "#cbd5e1" }
+          }
+          role="menu"
+          aria-label="Overlay layers"
+        >
           <div
             className={clsx(
-              "space-y-3 border-t pt-3",
-              dark ? "border-gray-800" : "border-slate-200",
+              "flex items-center justify-between border-b px-3 py-2.5",
+              dark ? "border-gray-800" : "border-slate-100",
             )}
           >
-            <p
-              className={clsx(
-                "text-[10px] font-semibold uppercase tracking-widest",
-                dark ? "text-gray-500" : "text-slate-500",
-              )}
-            >
-              Location intelligence
-            </p>
+            <span className="inline-flex items-center gap-2">
+              <IconLayers size={14} className={dark ? "text-sky-400" : "text-sky-700"} />
+              <span
+                className={clsx(
+                  "text-xs font-semibold uppercase tracking-wide",
+                  dark ? "text-gray-200" : "text-slate-800",
+                )}
+              >
+                Layers
+              </span>
+            </span>
+            <IconChevronLeft size={12} className={dark ? "text-gray-500" : "text-slate-400"} />
+          </div>
+
+          <div className="max-h-[min(60vh,24rem)] space-y-3 overflow-y-auto p-3">
             {layers.map((layer) => (
               <Row
                 key={layer.id}

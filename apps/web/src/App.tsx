@@ -346,11 +346,8 @@ export default function App() {
         <main className="relative h-full min-h-0 min-w-0 flex-1">
           <div ref={mapContainer} className="h-full w-full bg-slate-200" />
 
-          {/* Flood Watch MapPanel layout: Layers top-left · Legend bottom-left · Home+Basemap under zoom */}
+          {/* Flood Watch MapPanel layout: Legend bottom-left · Home+Basemap+Layers under zoom */}
           <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100vw-5.5rem)] space-y-2 sm:max-w-none">
-            <div className="pointer-events-auto">
-              <LayersPanel theme={theme} layers={layers} onToggle={toggleLayer} />
-            </div>
             {nearbyAmenities.length > 0 && layerEnabled("amenities_poi") && (
               <div className="pointer-events-auto">
                 <button
@@ -393,6 +390,9 @@ export default function App() {
             </button>
             <div className="pointer-events-auto">
               <BasemapSwitcher theme={theme} activeId={basemapId} onChange={setBasemapId} />
+            </div>
+            <div className="pointer-events-auto">
+              <LayersPanel theme={theme} layers={layers} onToggle={toggleLayer} />
             </div>
           </div>
 
