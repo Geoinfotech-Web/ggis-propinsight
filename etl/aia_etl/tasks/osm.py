@@ -17,13 +17,15 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 
 from aia_etl.celery_app import app
 from aia_etl.config import get_settings
 from aia_etl.db import connect
-from aia_etl.layers import bump_layer
+from aia_etl.layers import bump_layer, next_layer_version
 from aia_etl.poi_categories import categorize
 from aia_etl.qa import FCT_BBOX, QAReport, require_geometry, run_rules, valid_category, within_bbox
+from aia_etl.sources.base import PoiRecord, replace_source_pois
 
 log = logging.getLogger(__name__)
 settings = get_settings()
@@ -31,6 +33,7 @@ settings = get_settings()
 # osm2pgsql staging table produced from the extract (default output prefix).
 _STAGING_POINT = "planet_osm_point"
 _STAGING_POLYGON = "planet_osm_polygon"
+_STAGING_LINE = "planet_osm_line"
 
 # OSM tag columns osm2pgsql exposes as hstore/columns that we inspect for POIs.
 _POI_TAG_KEYS = ("amenity", "shop", "man_made", "power", "healthcare", "tower:type")
@@ -95,22 +98,66 @@ def _staging_pois() -> list[dict[str, Any]]:
     return records
 
 
-def _publish_pois(records: list[dict[str, Any]], layer_version: str) -> int:
+def _publish_pois(
+    conn: Connection, records: list[dict[str, Any]], layer_version: str
+) -> int:
     """Replace the OSM-sourced POI layer with the QA-passed records."""
-    with connect() as conn:
-        conn.execute(text("DELETE FROM poi WHERE source = 'osm'"))
-        if records:
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO poi (geom, category, name, source, verified, layer_version)
-                    VALUES (ST_SetSRID(ST_MakePoint(:lon, :lat), 4326),
-                            :category, :name, 'osm', false, :lv)
-                    """
-                ),
-                [{**r, "lv": layer_version} for r in records],
+    pois = [
+        PoiRecord(
+            lon=float(record["lon"]),
+            lat=float(record["lat"]),
+            category=str(record["category"]),
+            name=record.get("name"),
+            source="osm",
+        )
+        for record in records
+    ]
+    return replace_source_pois(conn, "osm", pois, layer_version)
+
+
+def _staging_road_count(conn: Connection) -> int:
+    """Count usable road centrelines in the osm2pgsql staging table."""
+    return int(
+        conn.execute(
+            text(
+                f"""
+                SELECT COUNT(*)
+                FROM {_STAGING_LINE}
+                WHERE highway IS NOT NULL
+                  AND way IS NOT NULL
+                  AND NOT ST_IsEmpty(way)
+                """
             )
-    return len(records)
+        ).scalar_one()
+    )
+
+
+def _publish_roads(conn: Connection, layer_version: str) -> int:
+    """Atomically replace canonical roads from osm2pgsql staging."""
+    count = _staging_road_count(conn)
+    if count == 0:
+        raise ValueError("OSM staging contains no usable road centrelines")
+
+    conn.execute(text("DELETE FROM roads"))
+    conn.execute(
+        text(
+            "SELECT setval(pg_get_serial_sequence('roads', 'id'), 1, false)"
+        )
+    )
+    result = conn.execute(
+        text(
+            f"""
+            INSERT INTO roads (geom, highway, name, layer_version)
+            SELECT ST_Transform(way, 4326), highway, name, :lv
+            FROM {_STAGING_LINE}
+            WHERE highway IS NOT NULL
+              AND way IS NOT NULL
+              AND NOT ST_IsEmpty(way)
+            """
+        ),
+        {"lv": layer_version},
+    )
+    return result.rowcount or count
 
 
 def qa_pois(records: list[dict[str, Any]]) -> QAReport:
@@ -132,17 +179,29 @@ def refresh_osm(pbf_path: str | None = None) -> dict[str, Any]:
 
     candidates = _staging_pois()
     report = qa_pois(candidates)
+    if not report.passed:
+        raise ValueError("OSM staging contains no QA-passed POIs")
 
+    # Publish canonical POIs, canonical roads, and both registry versions in one
+    # transaction. A failure leaves the previous live tables and versions intact.
     with connect() as conn:
-        poi_version, poi_invalidated = bump_layer(conn, "poi", source="OSM (Geofabrik)")
-        roads_version, roads_invalidated = bump_layer(conn, "roads", source="OSM (Geofabrik)")
+        poi_version = next_layer_version(conn, "poi")
+        roads_version = next_layer_version(conn, "roads")
+        published_pois = _publish_pois(conn, report.passed, poi_version)
+        published_roads = _publish_roads(conn, roads_version)
+        bumped_poi, poi_invalidated = bump_layer(conn, "poi", source="OSM (Geofabrik)")
+        bumped_roads, roads_invalidated = bump_layer(
+            conn, "roads", source="OSM (Geofabrik)"
+        )
+        if (bumped_poi, bumped_roads) != (poi_version, roads_version):
+            raise RuntimeError("OSM layer version changed during publication")
 
-    published = _publish_pois(report.passed, poi_version)
     summary = {
         "aoi": settings.aoi_name,
         "poi_version": poi_version,
         "roads_version": roads_version,
-        "published_pois": published,
+        "published_pois": published_pois,
+        "published_roads": published_roads,
         "qa": report.summary(),
         "scores_invalidated": poi_invalidated + roads_invalidated,
     }

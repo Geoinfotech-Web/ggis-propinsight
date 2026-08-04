@@ -280,19 +280,49 @@ async def analyze(
     versions = versions or {}
     persona_key = resolve_persona_key(req.profile)
 
+    layer_versions: dict[str, str] = dict(versions)
     cache_key = None
-    if cache is not None:
-        cache_key = cache.make_key(persona_key, gh8, versions)
-        hit = await cache.get(cache_key)
-        if hit is not None:
-            hit["cached"] = True
-            return ScorecardResponse.model_validate(hit)
+    # Resolve the live GGIS model before trusting a cached flood result. The
+    # registry's hazard mirror may legitimately lag the live risk service.
+    if cache is not None and hasattr(flood, "meta"):
+        try:
+            meta = await flood.meta()
+            live_model = meta.get("model_version") if isinstance(meta, dict) else None
+        except Exception:  # noqa: BLE001 - risk() still provides graceful degradation
+            live_model = None
+        if live_model:
+            layer_versions["hazard"] = str(live_model)
+            cache_key = cache.make_key(persona_key, gh8, layer_versions)
+            hit = await cache.get(cache_key)
+            if hit is not None:
+                hit["cached"] = True
+                return ScorecardResponse.model_validate(hit)
 
     domains: dict[str, DomainResult] = {}
-    layer_versions: dict[str, str] = dict(versions)
 
     # --- Flood (live GGIS call, Tier 1) ---
     fr = await flood.risk(req.geometry.model_dump())
+    if fr.model_version:
+        layer_versions["hazard"] = fr.model_version
+
+    # If meta was unavailable or raced a model deployment, use the version from
+    # the risk response and try the correctly-versioned cache before DB scoring.
+    if (
+        cache is not None
+        and fr.status is FloodStatus.OK
+        and fr.model_version
+    ):
+        resolved_key = cache.make_key(persona_key, gh8, layer_versions)
+        if resolved_key != cache_key:
+            hit = await cache.get(resolved_key)
+            if hit is not None:
+                hit["cached"] = True
+                return ScorecardResponse.model_validate(hit)
+        cache_key = resolved_key
+    elif fr.status is not FloodStatus.OK:
+        # Do not retain degraded/unavailable flood responses for the normal 24h TTL.
+        cache_key = None
+
     if hasattr(flood, "history") and fr.status is FloodStatus.OK:
         try:
             fr.history_events = await flood.history(lon, lat)
@@ -308,8 +338,6 @@ async def analyze(
             evidence=_flood_evidence(fr),
             note=fr.message,
         )
-        if fr.model_version:
-            layer_versions["hazard"] = fr.model_version
     else:
         domains["flood"] = DomainResult(
             score=None,

@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 # Canonical layer names tracked in the registry.
-LAYERS = ("poi", "roads", "dem", "hazard", "planning", "market")
+LAYERS = ("poi", "roads", "dem", "hazard", "planning", "market", "security")
 UNPUBLISHED = "unpublished"
 
 
@@ -57,6 +57,19 @@ def get_version(conn: Connection, layer: str) -> str | None:
         text("SELECT version FROM layer_registry WHERE layer = :layer"), {"layer": layer}
     ).first()
     return row[0] if row else None
+
+
+def next_layer_version(conn: Connection, layer: str) -> str:
+    """Return the next version without publishing it.
+
+    ETL publishers use this to stamp staged rows, then update ``layer_registry``
+    only after every data write has succeeded in the same database transaction.
+    """
+    if layer not in LAYERS:
+        raise ValueError(f"unknown layer {layer!r}; expected one of {LAYERS}")
+    previous = get_version(conn, layer)
+    prev_for_calver = None if previous in (None, UNPUBLISHED) else previous
+    return next_calver(prev_for_calver)
 
 
 def set_version(
@@ -111,11 +124,7 @@ def bump_layer(
 
     Returns (new_version, invalidated_score_count).
     """
-    if layer not in LAYERS:
-        raise ValueError(f"unknown layer {layer!r}; expected one of {LAYERS}")
-    previous = get_version(conn, layer)
-    prev_for_calver = None if (previous in (None, UNPUBLISHED)) else previous
-    new_version = next_calver(prev_for_calver)
+    new_version = next_layer_version(conn, layer)
     set_version(conn, layer, new_version, source=source, notes=notes)
     invalidated = sweep_stale_scores(conn, layer, new_version)
     return new_version, invalidated

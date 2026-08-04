@@ -57,9 +57,10 @@ def test_overture_category_mapping():
 
 
 def test_overture_sql_uses_native_geoparquet_geometry():
-    sql = build_overture_sql(FCT_BBOX, "2026-06-17.0")
+    sql = build_overture_sql(FCT_BBOX, "2026-07-22.0")
     assert "ST_X(geometry)" in sql
     assert "ST_GeomFromWKB" not in sql
+    assert "release/2026-07-22.0/" in sql
 
 
 def test_arcgis_feature_mapping_and_name_fallback():

@@ -1,6 +1,6 @@
 # GGIS PropInsight (AIA) — Handoff
 
-_Last updated: 2026-07-28_
+_Last updated: 2026-08-04_
 
 Engineering handoff for **GGIS PropInsight** (internal codename **AIA**), a location
 intelligence web platform for the Nigerian property market. Pilot: **FCT / Abuja**.
@@ -15,19 +15,20 @@ Project Overview (v1.2), Technical Design Document (v1.1), and Implementation Pl
 |---|---|
 | Monorepo scaffold (api / etl / web / infra) | ✅ done |
 | GGIS Flood Watch client + graceful degradation (TDD §5.3) | ✅ done, live via mock |
-| PostGIS schema v1 (TDD §6.1) + Alembic (0001, 0002) | ✅ done |
+| PostGIS schema v1 (TDD §6.1) + Alembic (0001–0008) | ✅ done |
 | Scoring engine (weighted multi-criteria, TDD §4.4) | ✅ done |
 | `analyze` path: layer_registry stamping + Redis cache (TDD §2.2, §10) | ✅ done |
 | ETL package: `layer_version` discipline, OSM/DEM/flood tasks | ✅ done |
 | Google Earth Engine DEM source | ⚠️ code done; **blocked on GCP IAM** (see §5) |
 | React + MapLibre web shell (click-to-analyse) | ✅ runs locally |
 | CI (api + etl + web) | ✅ done |
-| Amenity / accessibility / feasibility domains | ⚠️ scoring wired; FCT demo seed (`0003`) publishes poi/roads/dem for local analyse |
+| Multi-source POIs (Overpass + Overture + GRID3) | ✅ adapters configured; transactional publish + QA gates added |
+| Amenity / accessibility / feasibility domains | ⚠️ amenities has live Overpass data; roads and DEM remain demo-backed until production ETL runs |
 
-**Flood** is the only domain returning a live score; the other Tier-1 domains
-(`amenities`, `accessibility`, `feasibility`) return `status: "pending"` until
-their ETL layers publish. Tier 2–3 domains (`security`, `tenure`, `market`,
-`livability`) are later phases. No domain is ever surfaced with a fabricated score.
+**Flood** and **amenities** have live sources. Accessibility, feasibility,
+security, and tenure can score locally but are still backed wholly or partly by
+demo-seeded layers. Market and livability remain pending. Demo provenance must
+remain visible until production layers pass QA and publish.
 
 ---
 
@@ -41,12 +42,12 @@ Containers are **up** so the app can be explored (project name `aia`):
 | PostGIS 16 | `aia-db-1` | localhost:5432 |
 | Redis | `aia-redis-1` | localhost:6379 |
 | Mock GGIS Flood Watch | `aia-mock-ggis-1` | http://localhost:9100/v1/meta/model |
-| Web dev server (Vite) | (host process) | http://localhost:52591 _(ephemeral; see §3)_ |
+| Web dev server (Vite) | `aia-web-1` | http://localhost:5174 |
 
 > **Port note:** the real **GGIS Flood Watch stack** (`flood_*` containers) runs on
 > the same host and holds **8000** and **5173**. AIA therefore uses **8001** for the
-> API and an auto-assigned port for the web dev server. This is baked into
-> `docker-compose.yml` (api `8001:8000`) and `apps/web/vite.config.ts` (proxy → 8001).
+> API and **5174** for the web dev server. This is baked into
+> `docker-compose.yml` and `apps/web/vite.config.ts` (proxy → 8001).
 
 ### Explore it
 - Open the web app and **click any point on the map** → live scorecard.
@@ -64,13 +65,10 @@ Containers are **up** so the app can be explored (project name `aia`):
 ## 3. Running things from scratch
 
 ```bash
-# 1. Backend stack (db, redis, mock-ggis, api on 8001)
-docker compose up -d db redis mock-ggis api      # api runs `alembic upgrade head` on start
+# 1. Core stack (db, redis, mock-ggis, API, web)
+docker compose up -d db redis mock-ggis api web  # API runs `alembic upgrade head` on start
 
-# 2. Web dev server (Vite auto-picks a free port; prints the URL)
-cd apps/web && npm install && npm run dev
-
-# 3. ETL worker / beat (optional; needed for scheduled/queued pipelines)
+# 2. ETL worker / beat (optional; needed for scheduled/queued pipelines)
 docker compose up -d etl-worker etl-beat
 ```
 
@@ -80,8 +78,8 @@ docker compose up -d etl-worker etl-beat
 
 ### Tests
 ```bash
-cd services/api && pip install -e ".[dev]" && pytest -q      # 6 tests
-cd etl && pip install pytest "sqlalchemy>=2.0" pydantic-settings requests && pytest -q   # 18 tests
+cd services/api && pip install -e ".[dev]" && pytest -q      # 48 tests
+cd etl && pip install pytest "sqlalchemy>=2.0" pydantic-settings requests && pytest -q   # 37 tests
 ```
 
 ---
@@ -148,18 +146,19 @@ Key files:
 
 ## 7. Recommended next steps
 
-1. **Unblock GEE IAM** (§5) and run `dem_from_gee` to produce the first real
-   slope/flow-accumulation/TWI COGs for FCT.
-2. **OSM roads & POIs ETL** — run `refresh_osm` (needs a Geofabrik extract) to
-   populate `poi`/`roads`, flipping `amenities` from `pending` to live (scoring
-   is already wired). Then finish accessibility via OSRM/Valhalla travel times.
-3. **Serve DEM/hazard tiles** via TiTiler + `martin`, and register a `layer switcher`
-   in the web app.
-4. **Persist scorecards to the `scores` table** (not just Redis) so the ETL
+1. **Stage and run the atomic multi-source POI refresh** for Overpass, Overture,
+   and GRID3; review coverage, duplicates, attribution, and category counts before publish.
+2. **Run the canonical OSM roads publish** from a current Geofabrik extract, then
+   replace straight-line accessibility proxies with OSRM/Valhalla travel times.
+3. **Unblock GEE IAM** (§5), run `dem_from_gee`, and verify the generated COGs plus
+   the API-facing 1 km DEM sample grid before replacing demo terrain data.
+4. **Implement the GGIS hazard coverage export** before enabling hazard mirroring;
+   the current task intentionally reports `blocked` rather than publishing an empty COG.
+5. **Persist scorecards to the `scores` table** (not just Redis) so the ETL
    `sweep_stale_scores` has durable rows to invalidate.
-5. **Check domain readiness** — `GET /v1/meta/readiness` (and
+6. **Check domain readiness** — `GET /v1/meta/readiness` (and
    `etl/aia_etl/domain_deps.py`) for the Phase 1 unlock matrix.
-6. **Branch protection** on `main` + require CI, then move to PR-based flow.
+7. **Branch protection** on `main` + require CI, then move to PR-based flow.
 
 ---
 

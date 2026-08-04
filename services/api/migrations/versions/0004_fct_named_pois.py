@@ -97,7 +97,10 @@ def upgrade() -> None:
         sa.text(
             """
             INSERT INTO layer_registry (layer, version, source, notes, updated_at)
-            VALUES ('poi', :ver, 'FCT named amenity seed', 'Named schools/hospitals/markets/banks for PropInsight pilot', now())
+            VALUES (
+              'poi', :ver, 'FCT named amenity seed',
+              'Named schools/hospitals/markets/banks for PropInsight pilot', now()
+            )
             ON CONFLICT (layer) DO UPDATE SET
               version = EXCLUDED.version,
               source = EXCLUDED.source,
@@ -114,4 +117,7 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
     if "poi" not in inspector.get_table_names():
         return
-    bind.execute(sa.text("DELETE FROM poi WHERE source = 'demo-seed' AND layer_version = :ver"), {"ver": LAYER})
+    bind.execute(
+        sa.text("DELETE FROM poi WHERE source = 'demo-seed' AND layer_version = :ver"),
+        {"ver": LAYER},
+    )

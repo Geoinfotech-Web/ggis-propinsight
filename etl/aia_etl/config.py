@@ -33,12 +33,24 @@ class ETLSettings(BaseSettings):
     gee_project: str | None = None
 
     # POI sources to ingest (comma-separated): overpass | overture | grid3 | ...
-    poi_sources: str = "overpass"
+    poi_sources: str = "overpass,overture,grid3"
     # Overture Maps release (GeoParquet). Bump to the latest release periodically.
-    overture_release: str = "latest"
+    overture_release: str = "2026-07-22.0"
     # GRID3 Nigeria ArcGIS FeatureServer layer URLs (health / education). Non-OSM.
-    grid3_health_url: str = ""
-    grid3_education_url: str = ""
+    grid3_health_url: str = (
+        "https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/"
+        "GRID3_NGA_health_facilities_v2_0/FeatureServer/0"
+    )
+    grid3_education_url: str = (
+        "https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/"
+        "Schools_in_Nigeria/FeatureServer/0"
+    )
+
+    # Licensed open market fallback used when no partner CSV is mounted.
+    market_source_url: str = (
+        "https://huggingface.co/datasets/ayookuns/abuja-housing-prices-v1/"
+        "resolve/main/groundwork_abuja_housing_v1.csv"
+    )
 
     # Data working directory (COGs, extracts) — mounted volume in compose.
     data_dir: str = "/data"

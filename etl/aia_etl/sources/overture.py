@@ -3,7 +3,8 @@
 Overture (Linux Foundation; Meta/Microsoft/Amazon/TomTom) publishes a global,
 openly-licensed Places dataset that aggregates many non-OSM sources. It's served
 as GeoParquet in public cloud storage and queried directly with DuckDB — no bulk
-download, bbox pushdown via the `bbox` column. License: CDLA-Permissive 2.0.
+download, bbox pushdown via the `bbox` column. Overture carries mixed upstream
+licenses, so downstream products must preserve its published attribution data.
 
 `duckdb` is imported lazily so the module loads without it; the category mapping
 is pure and unit-tested.

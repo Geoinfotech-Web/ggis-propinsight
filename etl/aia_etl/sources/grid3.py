@@ -3,7 +3,9 @@
 GRID3 (geo-referenced infrastructure & demographic data) publishes Nigerian
 health and education facility layers as ArcGIS FeatureServers. Configure the
 layer URLs in `.env` (GRID3_HEALTH_URL / GRID3_EDUCATION_URL); each maps to a
-fixed AIA category. Non-OSM, no API key. License: CC-BY-4.0 (attribute GRID3).
+fixed AIA category. Non-OSM, no API key. The health layer is CC BY 4.0; the
+schools layer permits reuse with clear source attribution. Attribute GRID3 and
+the contributing institutions recorded in each ArcGIS item's metadata.
 """
 from __future__ import annotations
 

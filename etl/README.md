@@ -7,7 +7,7 @@ GDAL / rasterio / exactextract for raster analytics; QGIS-supported production w
 
 | Layer | Refresh | Pipeline summary |
 |---|---|---|
-| OSM roads & POIs | Monthly | Geofabrik Nigeria extract → `osm2pgsql` → QA rules → **layer_version bump** → OSRM/Valhalla graph rebuild |
+| OSM roads & POIs | Monthly | Geofabrik Nigeria extract → `osm2pgsql` → QA rules → atomic canonical publish → **layer_version bump** → OSRM/Valhalla graph rebuild |
 | GGIS flood hazard tiles | Per GGIS release + seasonal | Harvest hazard rasters/vectors via GGIS API → COG conversion → TiTiler registration |
 | DEM & terrain derivatives | One-time + on new UAV surveys | Slope, flow accumulation, TWI (GDAL/rasterio) |
 | Agency facility registries | Quarterly | Geocode, dedup against OSM POIs, field-verification flags |
@@ -61,11 +61,14 @@ adapter, not a schema or API change.
 
 | Adapter | Source | License | Notes |
 |---|---|---|---|
-| `overpass` | OpenStreetMap (Overpass API) | ODbL | Comprehensive AOI coverage, no bulk download. **Live now** (966 POIs for FCT). |
-| `overture` | Overture Maps Places | CDLA-Permissive 2.0 | Open, non-OSM, aggregates many providers; queried via DuckDB over public GeoParquet. |
-| _(extend)_ | Agency / ArcGIS registries (e.g. GRID3, state GIS, health/education ministries) | varies | Drop a `registry_geojson`-style adapter into `sources/`. |
+| `overpass` | OpenStreetMap (Overpass API) | ODbL | Comprehensive AOI coverage, no bulk download. |
+| `overture` | Overture Maps Places | mixed upstream licenses; attribution required | Open, non-OSM aggregation queried via DuckDB over public GeoParquet. Release comes from Overture's live STAC catalog. |
+| `grid3` | GRID3 Nigeria health facilities v2.0 + schools | Health: CC BY 4.0; schools: attribution required | Public ArcGIS FeatureServer layers; FCT endpoint check returned 1,107 health facilities and 2,060 schools on 2026-08-04. |
 
-Configure with `POI_SOURCES` (comma-separated) and `OVERTURE_RELEASE` in `.env`.
+Configure with `POI_SOURCES` (comma-separated), `OVERTURE_RELEASE`, and the
+GRID3 FeatureServer layer URLs in `.env`. All configured providers must return
+valid AOI records before the transaction replaces any live rows or advances the
+`poi` layer version.
 
 ```bash
 # Refresh POIs for the FCT from the configured sources (default: overpass):
@@ -76,9 +79,11 @@ docker compose run --rm etl-worker python -c \
   "from aia_etl.tasks.amenities import refresh_amenities; print(refresh_amenities(sources=['overpass','overture']))"
 ```
 
-Each run bumps the `poi` layer version, which invalidates dependent cached
-scorecards. Records are de-duplicated (same-category points on a ~11 m grid,
-preferring named entries) so overlapping providers merge cleanly.
+Each successful run atomically replaces the requested providers, bumps the `poi`
+layer version, and invalidates dependent cached scorecards. Records are
+de-duplicated across providers (same-category points on a ~11 m grid, preferring
+named entries) so overlapping providers merge cleanly. A provider failure leaves
+the previous published dataset and registry version untouched.
 
 ## Google Earth Engine (DEM + remote sensing)
 

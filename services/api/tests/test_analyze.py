@@ -15,6 +15,7 @@ class _StubFlood:
         self._result = result
         self.calls = 0
         self.history_calls = 0
+        self.meta_calls = 0
 
     async def risk(self, geometry, last_known=None):  # noqa: ANN001
         self.calls += 1
@@ -23,6 +24,10 @@ class _StubFlood:
     async def history(self, lon=None, lat=None):  # noqa: ANN001
         self.history_calls += 1
         return [{"date": "2025-09-14", "severity": "moderate", "source": "Sentinel-1"}]
+
+    async def meta(self):  # noqa: ANN201
+        self.meta_calls += 1
+        return {"model_version": self._result.model_version}
 
 
 class _FakeCache:
@@ -142,6 +147,33 @@ async def test_layer_bump_changes_key_and_forces_recompute():
 
     # A layer bump changes the versions -> new cache key -> recompute.
     await analyze(_req(), flood=flood, versions={"poi": "2026.07.2"}, cache=cache)  # type: ignore[arg-type]
+    assert flood.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_live_flood_model_change_invalidates_cache_without_registry_bump():
+    flood = _StubFlood(_ok_flood())
+    cache = _FakeCache()
+    versions = {"poi": "2026.07.1", "hazard": "unpublished"}
+
+    first = await analyze(_req(), flood=flood, versions=versions, cache=cache)  # type: ignore[arg-type]
+    assert first.layer_versions["hazard"] == "ggis-fw-2.3"
+    assert flood.calls == 1
+
+    flood._result = FloodResult(
+        status=FloodStatus.OK,
+        risk_class="High",
+        risk_score=0.8,
+        normalised=0.2,
+        factors={},
+        model_version="ggis-fw-2.4",
+        data_currency="2026-08-04",
+        confidence="high",
+    )
+    second = await analyze(_req(), flood=flood, versions=versions, cache=cache)  # type: ignore[arg-type]
+
+    assert second.cached is False
+    assert second.layer_versions["hazard"] == "ggis-fw-2.4"
     assert flood.calls == 2
 
 

@@ -19,6 +19,7 @@ from aia_etl.config import get_settings
 from aia_etl.db import connect
 from aia_etl.layers import get_version, next_calver, set_version, sweep_stale_scores
 from aia_etl.qa import FCT_BBOX
+from aia_etl.sources.groundwork_market import fetch_groundwork_market
 
 log = logging.getLogger(__name__)
 settings = get_settings()
@@ -87,11 +88,19 @@ def read_partner_csv(path: Path) -> list[dict[str, Any]]:
 @app.task(name="aia_etl.tasks.market.refresh_market_samples")
 def refresh_market_samples(csv_path: str | None = None) -> dict[str, Any]:
     path = Path(csv_path) if csv_path else Path(settings.data_dir) / "market" / "market_samples.csv"
-    if not path.exists():
+    if path.exists():
+        records = read_partner_csv(path)
+        publication_source = "Partner agent network"
+    elif csv_path:
         log.info("market import skipped: %s is not available", path)
         return {"status": "skipped", "reason": "partner file unavailable", "path": str(path)}
+    elif settings.market_source_url:
+        records = fetch_groundwork_market(settings.market_source_url)
+        publication_source = "Groundwork Data Abuja Housing v1 (CC BY 4.0)"
+    else:
+        log.info("market import skipped: no partner file or open source URL is configured")
+        return {"status": "skipped", "reason": "no market source configured"}
 
-    records = read_partner_csv(path)
     with connect() as conn:
         previous = get_version(conn, "market")
         version = next_calver(None if previous in (None, "unpublished") else previous)
@@ -117,7 +126,7 @@ def refresh_market_samples(csv_path: str | None = None) -> dict[str, Any]:
             conn,
             "market",
             version,
-            source="Partner agent network",
+            source=publication_source,
             notes=f"{len(records)} QA-passed geocoded listing/transaction samples",
         )
         invalidated = sweep_stale_scores(conn, "market", version)
@@ -126,6 +135,7 @@ def refresh_market_samples(csv_path: str | None = None) -> dict[str, Any]:
         "status": "published",
         "version": version,
         "samples": len(records),
+        "source": publication_source,
         "invalidated_scores": invalidated,
         "published_at": datetime.now(UTC).isoformat(),
     }

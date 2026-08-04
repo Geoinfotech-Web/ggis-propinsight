@@ -27,6 +27,10 @@ log = logging.getLogger(__name__)
 settings = get_settings()
 
 
+class HazardCoverageUnavailable(RuntimeError):
+    """Raised while GGIS has no supported hazard coverage export endpoint."""
+
+
 def _headers(method: str, path: str, body: bytes = b"") -> dict[str, str]:
     ts = str(int(time.time()))
     body_hash = hashlib.sha256(body).hexdigest()
@@ -61,10 +65,9 @@ def harvest_hazard_cog(model_version: str) -> Path:
     Phase 1 stub: records intent. The concrete harvest depends on the GGIS
     tile/coverage endpoint shape finalised with the GGIS team.
     """
-    out = Path(settings.data_dir) / "hazard" / f"{model_version}.tif"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    log.info("TODO: harvest GGIS hazard coverage for %s -> %s (COG)", model_version, out)
-    return out
+    raise HazardCoverageUnavailable(
+        "GGIS hazard coverage export is not implemented; live risk queries remain available"
+    )
 
 
 @app.task(name="aia_etl.tasks.flood_tiles.mirror_hazard_tiles")
@@ -75,7 +78,18 @@ def mirror_hazard_tiles() -> dict[str, Any]:
     if remote == local:
         return {"status": "up_to_date", "hazard_version": local}
 
-    cog = harvest_hazard_cog(remote)
+    try:
+        cog = harvest_hazard_cog(remote)
+    except HazardCoverageUnavailable as exc:
+        log.warning("hazard mirror blocked for %s: %s", remote, exc)
+        return {
+            "status": "blocked",
+            "hazard_version": local,
+            "remote_version": remote,
+            "reason": str(exc),
+        }
+    if not cog.is_file() or cog.stat().st_size == 0:
+        raise RuntimeError(f"hazard mirror did not produce a readable COG: {cog}")
     # Use the GGIS model_version verbatim as our hazard layer version, then sweep.
     with connect() as conn:
         set_version(conn, "hazard", remote, source="GGIS Flood Watch", notes=str(cog))

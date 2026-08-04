@@ -30,8 +30,8 @@ cp .env.example .env      # then put the real GGIS Flood Watch key in .env
 docker compose up --build
 ```
 
-- API:        http://localhost:8000  (`/health`, `/docs`, `/v1/meta/flood`)
-- Web:        run the frontend separately (below) or add a compose service
+- API:        http://localhost:8001  (`/health`, `/docs`, `/v1/meta/flood`)
+- Web:        http://localhost:5174
 - Mock GGIS:  http://localhost:9100/v1/meta/model
 
 The API container runs `alembic upgrade head` on start (creates the PostGIS schema
@@ -40,20 +40,21 @@ and seeds the `fct-v1` scoring profile), then serves with autoreload.
 ### Try the core endpoint
 
 ```bash
-curl -s http://localhost:8000/v1/locations/analyze \
+curl -s http://localhost:8001/v1/locations/analyze \
   -H "Content-Type: application/json" \
   -d '{"geometry":{"type":"Point","coordinates":[7.3986,8.9634]}}'
 ```
 
-Flood is **live** (via GGIS / mock). Other Tier-1 domains report `pending` until their
-OSM/DEM ETL layers are published — no domain is surfaced without a real pipeline behind it.
+Flood is **live** (via GGIS / mock). POIs can be refreshed from OSM Overpass,
+Overture Maps, and GRID3 Nigeria. Roads, DEM, security, and planning remain
+demo-backed until their production ETL layers pass QA and publish atomically.
 
 ## Frontend dev
 
 ```bash
 cd apps/web
 npm install
-npm run dev        # http://localhost:5173 — proxies /v1 to the API
+npm run dev        # http://localhost:5174 — proxies /v1 to the API
 ```
 
 ## Tests
@@ -62,6 +63,9 @@ npm run dev        # http://localhost:5173 — proxies /v1 to the API
 cd services/api
 pip install -e ".[dev]"
 pytest -q
+
+cd ../../etl
+python -m pytest -q
 ```
 
 ## GGIS Flood Watch integration
@@ -73,4 +77,5 @@ scorecard still returns. Set `GGIS_FLOOD_*` in `.env`.
 
 ## Status
 
-Phase 1 (Foundation) scaffold — see `docs/GGIS PropInsight Implementation Plan.pdf`.
+Phase 1 data activation: the application scaffold and scorecard are operational;
+the current focus is replacing demo-backed layers with QA-gated production data.
