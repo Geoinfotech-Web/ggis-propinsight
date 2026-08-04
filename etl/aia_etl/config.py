@@ -32,6 +32,11 @@ class ETLSettings(BaseSettings):
     gee_service_account_key: str | None = None
     gee_project: str | None = None
 
+    # POI sources to ingest (comma-separated): overpass | overture | ...
+    poi_sources: str = "overpass"
+    # Overture Maps release (GeoParquet). Bump to the latest release periodically.
+    overture_release: str = "2024-11-13.0"
+
     # Data working directory (COGs, extracts) — mounted volume in compose.
     data_dir: str = "/data"
 
@@ -39,6 +44,10 @@ class ETLSettings(BaseSettings):
     aoi_name: str = "FCT"
     # Geofabrik extract for OSM (Nigeria); clipped to the AOI in the pipeline.
     osm_extract_url: str = "https://download.geofabrik.de/africa/nigeria-latest.osm.pbf"
+
+    @property
+    def poi_sources_list(self) -> list[str]:
+        return [s.strip() for s in self.poi_sources.split(",") if s.strip()]
 
     @property
     def sync_sqlalchemy_url(self) -> str:

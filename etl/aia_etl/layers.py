@@ -72,7 +72,7 @@ def set_version(
               SET version = EXCLUDED.version,
                   source = COALESCE(EXCLUDED.source, layer_registry.source),
                   notes = EXCLUDED.notes,
-                  updated_at = EXCLUDED.ts
+                  updated_at = EXCLUDED.updated_at
             """
         ),
         {

@@ -52,6 +52,34 @@ The `layer_registry` table (Alembic migration `0002`) is the shared source of tr
 for current layer versions; the API reads it to stamp scorecards, ETL bumps it on
 publish.
 
+## POI data sources — beyond OSM (`aia_etl/sources/`)
+
+AIA is **not limited to OpenStreetMap**. POIs are normalised from any open
+provider into the shared `poi` schema, tagged with a `source` so provenance is
+kept and each provider refreshes independently. Adding a provider is a new
+adapter, not a schema or API change.
+
+| Adapter | Source | License | Notes |
+|---|---|---|---|
+| `overpass` | OpenStreetMap (Overpass API) | ODbL | Comprehensive AOI coverage, no bulk download. **Live now** (966 POIs for FCT). |
+| `overture` | Overture Maps Places | CDLA-Permissive 2.0 | Open, non-OSM, aggregates many providers; queried via DuckDB over public GeoParquet. |
+| _(extend)_ | Agency / ArcGIS registries (e.g. GRID3, state GIS, health/education ministries) | varies | Drop a `registry_geojson`-style adapter into `sources/`. |
+
+Configure with `POI_SOURCES` (comma-separated) and `OVERTURE_RELEASE` in `.env`.
+
+```bash
+# Refresh POIs for the FCT from the configured sources (default: overpass):
+celery -A aia_etl.celery_app call aia_etl.tasks.amenities.refresh_amenities
+
+# Or synchronously, choosing sources:
+docker compose run --rm etl-worker python -c \
+  "from aia_etl.tasks.amenities import refresh_amenities; print(refresh_amenities(sources=['overpass','overture']))"
+```
+
+Each run bumps the `poi` layer version, which invalidates dependent cached
+scorecards. Records are de-duplicated (same-category points on a ~11 m grid,
+preferring named entries) so overlapping providers merge cleanly.
+
 ## Google Earth Engine (DEM + remote sensing)
 
 `aia_etl/gee.py` sources the DEM (and other imagery analysis) from Earth Engine

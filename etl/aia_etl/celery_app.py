@@ -22,6 +22,7 @@ app = Celery(
     backend=settings.redis_url,
     include=[
         "aia_etl.tasks.osm",
+        "aia_etl.tasks.amenities",
         "aia_etl.tasks.dem",
         "aia_etl.tasks.flood_tiles",
     ],
