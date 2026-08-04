@@ -79,6 +79,21 @@ const TENURE_LABELS: Record<string, string> = {
   overlays: "Planning overlays",
 };
 
+const MARKET_LABELS: Record<string, string> = {
+  headline: "Market read",
+  estimated_price: "Spatial estimate",
+  price_range: "Nearby price range",
+  trend: "Price trend",
+  gross_yield: "Gross yield",
+  sample_count: "Nearby samples",
+  sample_mix: "Property sample",
+  record_mix: "Record type",
+  verified_samples: "Partner verified",
+  sources: "Sources",
+  coverage_radius_m: "Coverage radius",
+  as_of: "Latest observation",
+  method: "Method",
+};
 function scoreBarColor(score: number | null, status: DomainResult["status"]): string {
   if (status === "pending" || score === null) return "#94a3b8";
   if (score >= 70) return "#0d9488";
@@ -145,6 +160,9 @@ function formatEvidenceValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, unknown>;
+    if (typeof obj.min === "number" && typeof obj.max === "number" && typeof obj.unit === "string") {
+      return `${formatMarketPrice(obj.min, obj.unit)} – ${formatMarketPrice(obj.max, obj.unit)}`;
+    }
     if (typeof obj.distance_m === "number") {
       const parts: string[] = [];
       if (typeof obj.name === "string" && obj.name.trim()) parts.push(obj.name.trim());
@@ -155,6 +173,16 @@ function formatEvidenceValue(key: string, value: unknown): string {
     if (typeof obj.slope_deg === "number") return `${obj.slope_deg.toFixed(1)}°`;
     if (typeof obj.twi === "number") return `TWI ${obj.twi.toFixed(1)}`;
     if (typeof obj.flood_normalised === "number") return `${(obj.flood_normalised * 100).toFixed(0)} / 100`;
+    if (typeof obj.value === "number" && typeof obj.unit === "string") {
+      const formatted = obj.unit.toUpperCase().startsWith("NGN")
+        ? new Intl.NumberFormat("en-NG", {
+            style: "currency",
+            currency: "NGN",
+            maximumFractionDigits: 0,
+          }).format(obj.value)
+        : `${new Intl.NumberFormat("en-NG", { maximumFractionDigits: 0 }).format(obj.value)} ${obj.unit}`;
+      return typeof obj.kind === "string" ? `${formatted} · ${obj.kind}` : formatted;
+    }
     if ("date" in obj && "severity" in obj) {
       return `${obj.date} · ${obj.severity}${obj.source ? ` (${obj.source})` : ""}`;
     }
@@ -183,6 +211,7 @@ function labelFor(domain: string, key: string): string {
   if (domain === "feasibility") return FEASIBILITY_LABELS[key] ?? key.replace(/_/g, " ");
   if (domain === "security") return SECURITY_LABELS[key] ?? key.replace(/_/g, " ");
   if (domain === "tenure") return TENURE_LABELS[key] ?? key.replace(/_/g, " ");
+  if (domain === "market") return MARKET_LABELS[key] ?? key.replace(/_/g, " ");
   return key.replace(/_/g, " ");
 }
 
@@ -224,6 +253,53 @@ type NearbyPoi = {
   lat: number;
 };
 
+type MarketListing = {
+  id?: string;
+  title: string;
+  area?: string;
+  address?: string;
+  bedrooms?: number;
+  property_type?: string;
+  price: number;
+  unit: string;
+  observed_at?: string;
+  source_url?: string;
+};
+
+function formatMarketPrice(value: number, unit: string): string {
+  const amount = unit.toUpperCase().startsWith("NGN")
+    ? new Intl.NumberFormat("en-NG", {
+        style: "currency",
+        currency: "NGN",
+        maximumFractionDigits: 0,
+      }).format(value)
+    : `${new Intl.NumberFormat("en-NG", { maximumFractionDigits: 0 }).format(value)} ${unit}`;
+  return unit.toLowerCase().includes("year") ? `${amount} / year` : amount;
+}
+
+function parseMarketListings(evidence: Record<string, unknown>): MarketListing[] {
+  if (!Array.isArray(evidence.listings)) return [];
+  return evidence.listings
+    .map<MarketListing | null>((item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      if (typeof row.title !== "string" || typeof row.price !== "number" || typeof row.unit !== "string") return null;
+      return {
+        id: typeof row.id === "string" ? row.id : undefined,
+        title: row.title,
+        area: typeof row.area === "string" ? row.area : undefined,
+        address: typeof row.address === "string" ? row.address : undefined,
+        bedrooms: typeof row.bedrooms === "number" ? row.bedrooms : undefined,
+        property_type: typeof row.property_type === "string" ? row.property_type : undefined,
+        price: row.price,
+        unit: row.unit,
+        observed_at: typeof row.observed_at === "string" ? row.observed_at : undefined,
+        source_url: typeof row.source_url === "string" ? row.source_url : undefined,
+      };
+    })
+    .filter((item): item is MarketListing => item !== null);
+}
+
 const NEARBY_ORDER = ["school", "hospital", "market", "bank"] as const;
 
 function parseNearby(
@@ -264,11 +340,13 @@ function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<
           ? ["risk_class", "risk_score", "elevation_m", "dist_to_drainage_m", "flow_accumulation_pct", "historical_inundation_events", "last_event", "data_currency", "model_version"]
           : domain === "feasibility"
             ? Object.keys(FEASIBILITY_LABELS)
+            : domain === "market"
+              ? Object.keys(MARKET_LABELS)
             : Object.keys(evidence);
 
   const keys = preferred.filter((k) => k in evidence);
   for (const k of Object.keys(evidence)) {
-    if (!keys.includes(k) && k !== "history_events" && k !== "nearby") keys.push(k);
+    if (!keys.includes(k) && !["history_events", "nearby", "listings", "listing_kind"].includes(k)) keys.push(k);
   }
 
   return keys.map((key) => ({
@@ -316,6 +394,7 @@ export function ScorecardConsole({
     accessibility: true,
     flood: true,
     feasibility: true,
+    market: true,
   });
 
   const toggle = (id: string) =>
@@ -677,6 +756,75 @@ export function ScorecardConsole({
                                   )}
                                 </div>
                               )}
+                            </div>
+                          );
+                        })()}
+
+                        {d === "market" && (() => {
+                          const evidence = r.evidence ?? {};
+                          const listings = parseMarketListings(evidence);
+                          const listingKind = evidence.listing_kind === "rent" ? "rent" : "sale";
+                          return (
+                            <div className={clsx("mt-3 border-t pt-2.5", dark ? "border-gray-800" : "border-slate-100")}>
+                              <p
+                                className={clsx(
+                                  "text-[10px] font-semibold uppercase tracking-widest",
+                                  dark ? "text-gray-500" : "text-slate-400",
+                                )}
+                              >
+                                {listingKind === "rent"
+                                  ? "Homes & apartments for rent"
+                                  : "Homes & apartments for sale"}
+                              </p>
+                              {listings.length === 0 ? (
+                                <p className={clsx("mt-1.5 text-[11px]", dark ? "text-gray-500" : "text-slate-400")}>
+                                  No source listings are available for this location yet.
+                                </p>
+                              ) : (
+                                <ul className="mt-2 space-y-2">
+                                  {listings.map((listing, index) => (
+                                    <li
+                                      key={listing.id ?? `${listing.title}-${index}`}
+                                      className={clsx(
+                                        "rounded-lg border p-2.5",
+                                        dark ? "border-gray-800 bg-gray-950/40" : "border-slate-200 bg-slate-50",
+                                      )}
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                          <p className="line-clamp-2 text-[11px] font-semibold leading-snug">{listing.title}</p>
+                                          <p className={clsx("mt-0.5 text-[10px]", dark ? "text-gray-500" : "text-slate-500")}>
+                                            {[listing.area, listing.address && listing.address !== listing.area ? listing.address : null]
+                                              .filter(Boolean)
+                                              .join(" · ")}
+                                          </p>
+                                        </div>
+                                        <p className={clsx("shrink-0 text-right text-[11px] font-semibold tabular-nums", dark ? "text-teal-300" : "text-teal-800")}>
+                                          {formatMarketPrice(listing.price, listing.unit)}
+                                        </p>
+                                      </div>
+                                      <div className={clsx("mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px]", dark ? "text-gray-500" : "text-slate-500")}>
+                                        {listing.bedrooms !== undefined && <span>{listing.bedrooms} bed</span>}
+                                        {listing.property_type && <span>{listing.property_type}</span>}
+                                        {listing.observed_at && <span>Observed {listing.observed_at}</span>}
+                                        {listing.source_url && (
+                                          <a
+                                            href={listing.source_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className={clsx("font-semibold", dark ? "text-sky-400 hover:text-sky-300" : "text-sky-700 hover:text-sky-800")}
+                                          >
+                                            View source
+                                          </a>
+                                        )}
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              <p className={clsx("mt-2 text-[10px] leading-relaxed", dark ? "text-amber-300/80" : "text-amber-800")}>
+                                Asking-price snapshot. Confirm current availability, price, and terms with the listing source.
+                              </p>
                             </div>
                           );
                         })()}

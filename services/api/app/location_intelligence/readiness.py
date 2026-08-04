@@ -15,13 +15,14 @@ REQUIRED_LAYERS: dict[str, tuple[str, ...]] = {
     "feasibility": ("dem",),
     "security": ("security",),
     "tenure": ("planning",),
+    "market": ("market",),
 }
 
 # Back-compat alias (Tier-1 subset historically referenced by name).
 TIER1_REQUIRED_LAYERS = REQUIRED_LAYERS
 
 # Domains still awaiting a later phase (no scoring wired yet).
-LATER_DOMAINS: tuple[str, ...] = ("market", "livability")
+LATER_DOMAINS: tuple[str, ...] = ("livability",)
 
 
 def is_published(versions: dict[str, str], layer: str) -> bool:

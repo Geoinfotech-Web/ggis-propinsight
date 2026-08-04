@@ -28,3 +28,13 @@ def test_feasibility_not_ready_without_dem():
 def test_layers_ready():
     assert layers_ready({"poi": "2026.07.1"}, ("poi",)) is True
     assert layers_ready({}, ("poi",)) is False
+
+
+def test_market_requires_published_partner_sample_layer():
+    pending = {r["domain"]: r for r in readiness_rows({})}["market"]
+    ready = {
+        r["domain"]: r for r in readiness_rows({"market": "2026.08.1"})
+    }["market"]
+    assert pending["ready"] is False
+    assert pending["required_layers"] == ["market"]
+    assert ready["ready"] is True

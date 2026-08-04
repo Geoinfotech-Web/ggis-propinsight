@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from aia_etl.sources.arcgis import build_params, map_feature
 from aia_etl.sources.base import FCT_BBOX, PoiRecord, dedup_records
-from aia_etl.sources.overpass import build_query, map_element
+from aia_etl.sources.overpass import OVERPASS_URLS, build_query, map_element
+from aia_etl.sources.overture import build_sql as build_overture_sql
 from aia_etl.sources.overture import map_overture_category
 
 
@@ -43,6 +44,7 @@ def test_overpass_query_covers_bbox():
     q = build_query((6.75, 8.25, 7.75, 9.35))
     assert "8.25,6.75,9.35,7.75" in q  # S,W,N,E
     assert 'node["amenity"="school"]' in q
+    assert len(OVERPASS_URLS) >= 2
 
 
 def test_overture_category_mapping():
@@ -52,6 +54,12 @@ def test_overture_category_mapping():
     assert map_overture_category("gas_station") == "fuel"
     assert map_overture_category("night_club") is None
     assert map_overture_category(None) is None
+
+
+def test_overture_sql_uses_native_geoparquet_geometry():
+    sql = build_overture_sql(FCT_BBOX, "2026-06-17.0")
+    assert "ST_X(geometry)" in sql
+    assert "ST_GeomFromWKB" not in sql
 
 
 def test_arcgis_feature_mapping_and_name_fallback():

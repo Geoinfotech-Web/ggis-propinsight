@@ -203,6 +203,16 @@ class MarketSample(Base):
     unit: Mapped[str | None] = mapped_column(String(20))
     observed_at: Mapped[date | None] = mapped_column(Date)
     source: Mapped[str | None] = mapped_column(String(120))
+    sample_type: Mapped[str] = mapped_column(String(16), default="listing")
+    verified: Mapped[bool] = mapped_column(default=False)
+    layer_version: Mapped[str] = mapped_column(String(20), default="unpublished", index=True)
+    external_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    title: Mapped[str | None] = mapped_column(String(240))
+    area: Mapped[str | None] = mapped_column(String(80), index=True)
+    address: Mapped[str | None] = mapped_column(String(300))
+    bedrooms: Mapped[int | None] = mapped_column(Integer)
+    property_type: Mapped[str | None] = mapped_column(String(80))
+    source_url: Mapped[str | None] = mapped_column(Text)
 
 
 class User(Base):

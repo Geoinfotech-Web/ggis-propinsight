@@ -25,6 +25,7 @@ app = Celery(
         "aia_etl.tasks.amenities",
         "aia_etl.tasks.dem",
         "aia_etl.tasks.flood_tiles",
+        "aia_etl.tasks.market",
     ],
 )
 
@@ -50,8 +51,7 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute=30, hour=1),
     },
     "market-monthly": {
-        # Placeholder cadence; task lands in Phase 3.
-        "task": "aia_etl.tasks.osm.noop",
+        "task": "aia_etl.tasks.market.refresh_market_samples",
         "schedule": crontab(minute=0, hour=3, day_of_month=2),
     },
 }

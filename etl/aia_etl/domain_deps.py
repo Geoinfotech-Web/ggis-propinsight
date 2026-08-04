@@ -35,7 +35,7 @@ DOMAIN_DEPENDENCIES: tuple[DomainDependency, ...] = (
         domain="amenities",
         tier=1,
         required_layers=("poi",),
-        pipeline_tasks=("aia_etl.tasks.osm.refresh_osm",),
+        pipeline_tasks=("aia_etl.tasks.amenities.refresh_amenities",),
         phase="1",
         note="Needs published OSM/agency POIs; scored via PostGIS KNN + fct-v1 weights.",
     ),
@@ -43,7 +43,10 @@ DOMAIN_DEPENDENCIES: tuple[DomainDependency, ...] = (
         domain="accessibility",
         tier=1,
         required_layers=("roads", "poi"),
-        pipeline_tasks=("aia_etl.tasks.osm.refresh_osm",),
+        pipeline_tasks=(
+            "aia_etl.tasks.osm.refresh_osm",
+            "aia_etl.tasks.amenities.refresh_amenities",
+        ),
         phase="1",
         note="Needs roads (+ POIs for destinations) and OSRM/Valhalla routing graph.",
     ),
@@ -77,10 +80,10 @@ DOMAIN_DEPENDENCIES: tuple[DomainDependency, ...] = (
     DomainDependency(
         domain="market",
         tier=3,
-        required_layers=(),
-        pipeline_tasks=(),
+        required_layers=("market",),
+        pipeline_tasks=("aia_etl.tasks.market.refresh_market_samples",),
         phase="3",
-        note="Geocoded land/rent/sale samples — later phase.",
+        note="Geocoded listing/transaction samples from the partner-agent network.",
     ),
     DomainDependency(
         domain="livability",
@@ -95,6 +98,7 @@ DOMAIN_DEPENDENCIES: tuple[DomainDependency, ...] = (
 # Phase 1 ETL run order for ops (publish blocking layers first).
 PHASE1_PIPELINE_PRIORITY: tuple[str, ...] = (
     "aia_etl.tasks.osm.refresh_osm",           # unlocks amenities + accessibility data
+    "aia_etl.tasks.amenities.refresh_amenities",  # multi-source named POIs
     "aia_etl.tasks.dem.dem_from_gee",          # unlocks feasibility terrain inputs
     "aia_etl.tasks.flood_tiles.mirror_hazard_tiles",  # map resilience if GGIS downs
 )

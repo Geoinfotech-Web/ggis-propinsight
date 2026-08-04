@@ -31,9 +31,10 @@ def test_pending_note_names_missing_layers():
     assert "Phase 1" in note
 
 
-def test_later_tier_note():
+def test_market_pending_note_names_unpublished_layer():
     note = pending_note("market", {})
-    assert "later phase" in note.lower()
+    assert "market" in note
+    assert "pipeline scheduled" in note.lower()
 
 
 def test_readiness_snapshot_marks_flood_ready():

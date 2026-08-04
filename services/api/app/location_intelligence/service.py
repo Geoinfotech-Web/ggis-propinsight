@@ -7,7 +7,8 @@ Phase 1 status per domain (Tier discipline, Overview §4):
   * feasibility  — LIVE when `dem` published (DEM samples + flood + utilities).
   * security     — LIVE when `security` published (district incident aggregate + police).
   * tenure       — LIVE when `planning` published (advisory planning-overlay screen).
-  * market / livability — Tier 3, later phases.
+  * market       — LIVE when geocoded partner samples publish the `market` layer.
+  * livability   — Tier 3, later phase.
 
 No domain is surfaced without a defined pipeline behind it: domains without a
 live pipeline return status="pending" rather than a fabricated score.
@@ -33,6 +34,7 @@ from app.location_intelligence.feasibility import (
     nearest_utility_distance_m,
     score_feasibility,
 )
+from app.location_intelligence.market import market_samples_for_point, score_market
 from app.location_intelligence.personas import (
     domain_priority,
     filter_domains_for_persona,
@@ -249,6 +251,21 @@ async def _score_tenure(
     return domainscore_to_result(score_tenure(overlays), status="ok")
 
 
+async def _score_market(
+    session: AsyncSession | None,
+    lon: float,
+    lat: float,
+    versions: dict[str, str],
+    persona: str,
+) -> DomainResult:
+    required = REQUIRED_LAYERS["market"]
+    if not layers_ready(versions, required) or session is None:
+        return _pending("market", versions)
+    samples, baselines = await market_samples_for_point(session, lon, lat)
+    ds = score_market(samples, baselines, persona=persona)
+    return domainscore_to_result(ds, status="ok" if ds.score is not None else "degraded")
+
+
 async def analyze(
     req: AnalyzeRequest,
     flood: GGISFloodClient | None = None,
@@ -314,6 +331,7 @@ async def analyze(
     # --- Tier 2 domains (security district aggregate, advisory tenure overlay) ---
     domains["security"] = await _score_security(session, lon, lat, versions, district)
     domains["tenure"] = await _score_tenure(session, lon, lat, versions)
+    domains["market"] = await _score_market(session, lon, lat, versions, persona_key)
 
     for d in LATER_DOMAINS:
         domains[d] = _pending(d, versions)

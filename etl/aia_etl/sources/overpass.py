@@ -17,7 +17,11 @@ from aia_etl.sources.base import PoiRecord
 
 log = logging.getLogger(__name__)
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS: tuple[str, ...] = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+)
 # Overpass rejects requests without a descriptive User-Agent (406).
 _HEADERS = {
     "User-Agent": "PropInsight/0.1 (Geoinfotech GGIS; github.com/Geoinfotech-Web/ggis-propinsight)",
@@ -74,14 +78,25 @@ def map_element(element: dict[str, Any]) -> PoiRecord | None:
 
 
 def fetch_overpass(
-    bbox: tuple[float, float, float, float], timeout_s: float = 180.0
+    bbox: tuple[float, float, float, float],
+    timeout_s: float = 180.0,
+    urls: tuple[str, ...] = OVERPASS_URLS,
 ) -> list[PoiRecord]:
     query = build_query(bbox)
     log.info("Overpass query for bbox %s", bbox)
+    failures: list[str] = []
     with httpx.Client(timeout=timeout_s, headers=_HEADERS) as client:
-        resp = client.post(OVERPASS_URL, data={"data": query})
-        resp.raise_for_status()
-        elements = resp.json().get("elements", [])
+        for url in urls:
+            try:
+                resp = client.post(url, data={"data": query})
+                resp.raise_for_status()
+                elements = resp.json().get("elements", [])
+                break
+            except (httpx.HTTPError, ValueError) as exc:
+                failures.append(f"{url}: {exc}")
+                log.warning("Overpass endpoint failed (%s): %s", url, exc)
+        else:
+            raise RuntimeError("all Overpass endpoints failed: " + "; ".join(failures))
     records = [rec for el in elements if (rec := map_element(el)) is not None]
     log.info("Overpass returned %d elements -> %d POIs", len(elements), len(records))
     return records

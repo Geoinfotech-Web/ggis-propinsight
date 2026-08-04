@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import logging
 
+import httpx
+
 from aia_etl.sources.base import PoiRecord
 
 log = logging.getLogger(__name__)
@@ -59,6 +61,16 @@ def _default_release() -> str:
     return get_settings().overture_release
 
 
+def latest_release() -> str:
+    """Resolve Overture's current release from its official STAC catalog."""
+    response = httpx.get("https://stac.overturemaps.org/catalog.json", timeout=30.0)
+    response.raise_for_status()
+    release = response.json().get("latest")
+    if not isinstance(release, str) or not release:
+        raise ValueError("Overture STAC catalog did not provide a latest release")
+    return release
+
+
 def build_sql(bbox: tuple[float, float, float, float], release: str) -> str:
     """DuckDB SQL selecting Overture places in bbox with a category we map."""
     min_lon, min_lat, max_lon, max_lat = bbox
@@ -71,8 +83,8 @@ def build_sql(bbox: tuple[float, float, float, float], release: str) -> str:
         SELECT
           names.primary AS name,
           categories.primary AS category,
-          ST_X(ST_GeomFromWKB(geometry)) AS lon,
-          ST_Y(ST_GeomFromWKB(geometry)) AS lat
+          ST_X(geometry) AS lon,
+          ST_Y(geometry) AS lat
         FROM read_parquet('{path}', filename=true, hive_partitioning=1)
         WHERE bbox.xmin <= {max_lon} AND bbox.xmax >= {min_lon}
           AND bbox.ymin <= {max_lat} AND bbox.ymax >= {min_lat}
@@ -86,6 +98,8 @@ def fetch_overture(
     import duckdb
 
     release = release or _default_release()
+    if release.lower() == "latest":
+        release = latest_release()
     con = duckdb.connect()
     con.execute("INSTALL httpfs; LOAD httpfs; INSTALL spatial; LOAD spatial;")
     con.execute("SET s3_region='us-west-2';")
