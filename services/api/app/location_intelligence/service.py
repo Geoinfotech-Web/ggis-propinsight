@@ -5,7 +5,9 @@ Phase 1 status per domain (Tier discipline, Overview §4):
   * amenities    — LIVE when `poi` layer is published (PostGIS KNN + fct-v1).
   * accessibility — LIVE when roads/poi published; landmark time proxies always when scoring.
   * feasibility  — LIVE when `dem` published (DEM samples + flood + utilities).
-  * security / tenure / market / livability — Tier 2–3, later phases.
+  * security     — LIVE when `security` published (district incident aggregate + police).
+  * tenure       — LIVE when `planning` published (advisory planning-overlay screen).
+  * market / livability — Tier 3, later phases.
 
 No domain is surfaced without a defined pipeline behind it: domains without a
 live pipeline return status="pending" rather than a fabricated score.
@@ -40,7 +42,7 @@ from app.location_intelligence.personas import (
 )
 from app.location_intelligence.readiness import (
     LATER_DOMAINS,
-    TIER1_REQUIRED_LAYERS,
+    REQUIRED_LAYERS,
     layers_ready,
     pending_note,
 )
@@ -51,6 +53,13 @@ from app.location_intelligence.schemas import (
     PersonaInfo,
     ScorecardResponse,
 )
+from app.location_intelligence.security import (
+    district_for_point,
+    district_incidents,
+    nearest_police_distance_m,
+    score_security,
+)
+from app.location_intelligence.tenure import overlapping_planning, score_tenure
 from app.scoring.engine import DomainScore
 
 if TYPE_CHECKING:
@@ -134,7 +143,7 @@ def _flood_evidence(fr: Any) -> dict[str, Any]:
 async def _score_amenities(
     session: AsyncSession | None, lon: float, lat: float, versions: dict[str, str]
 ) -> DomainResult:
-    required = TIER1_REQUIRED_LAYERS["amenities"]
+    required = REQUIRED_LAYERS["amenities"]
     if not layers_ready(versions, required) or session is None:
         return _pending("amenities", versions)
     nearest = await nearest_pois(session, lon, lat)
@@ -156,7 +165,7 @@ async def _score_amenities(
 async def _score_accessibility(
     session: AsyncSession | None, lon: float, lat: float, versions: dict[str, str]
 ) -> DomainResult:
-    required = TIER1_REQUIRED_LAYERS["accessibility"]
+    required = REQUIRED_LAYERS["accessibility"]
     if not layers_ready(versions, required) or session is None:
         return _pending("accessibility", versions)
     road_m = await nearest_road_distance_m(session, lon, lat)
@@ -173,7 +182,7 @@ async def _score_feasibility(
     versions: dict[str, str],
     flood_normalised: float | None,
 ) -> DomainResult:
-    required = TIER1_REQUIRED_LAYERS["feasibility"]
+    required = REQUIRED_LAYERS["feasibility"]
     if not layers_ready(versions, required) or session is None:
         return _pending("feasibility", versions)
     dem = await nearest_dem_sample(session, lon, lat)
@@ -195,6 +204,51 @@ async def _score_feasibility(
         ),
         status="ok",
     )
+
+
+async def _score_security(
+    session: AsyncSession | None,
+    lon: float,
+    lat: float,
+    versions: dict[str, str],
+    district: dict[str, Any] | None,
+) -> DomainResult:
+    required = REQUIRED_LAYERS["security"]
+    if not layers_ready(versions, required) or session is None:
+        return _pending("security", versions)
+    # Security is a district-level aggregate — a point outside covered districts
+    # cannot be scored honestly.
+    if district is None:
+        return DomainResult(
+            score=None,
+            confidence="Low",
+            status="degraded",
+            evidence={},
+            note="Security is district-level; this point is outside covered districts.",
+        )
+    incidents = await district_incidents(session, district["id"])
+    police_m = await nearest_police_distance_m(session, lon, lat)
+    ds = score_security(
+        incident_total=None if incidents is None else incidents["total"],
+        police_distance_m=police_m,
+        period=None if incidents is None else incidents["period"],
+        by_category=None if incidents is None else incidents["by_category"],
+        district=district["name"],
+    )
+    result = domainscore_to_result(ds, status="ok")
+    result.evidence["district"] = district["name"]
+    result.evidence["aggregation"] = "district"
+    return result
+
+
+async def _score_tenure(
+    session: AsyncSession | None, lon: float, lat: float, versions: dict[str, str]
+) -> DomainResult:
+    required = REQUIRED_LAYERS["tenure"]
+    if not layers_ready(versions, required) or session is None:
+        return _pending("tenure", versions)
+    overlays = await overlapping_planning(session, lon, lat)
+    return domainscore_to_result(score_tenure(overlays), status="ok")
 
 
 async def analyze(
@@ -249,12 +303,19 @@ async def analyze(
             note=fr.message or "Flood domain temporarily unavailable",
         )
 
+    # --- Resolve containing district once (drives security + LocationInfo) ---
+    district = await district_for_point(session, lon, lat) if session is not None else None
+
     # --- Tier-1 domains gated by published ETL layers ---
     domains["amenities"] = await _score_amenities(session, lon, lat, versions)
     domains["accessibility"] = await _score_accessibility(session, lon, lat, versions)
     domains["feasibility"] = await _score_feasibility(
         session, lon, lat, versions, fr.normalised
     )
+
+    # --- Tier 2 domains (security district aggregate, advisory tenure overlay) ---
+    domains["security"] = await _score_security(session, lon, lat, versions, district)
+    domains["tenure"] = await _score_tenure(session, lon, lat, versions)
 
     for d in LATER_DOMAINS:
         domains[d] = _pending(d, versions)
@@ -263,7 +324,11 @@ async def analyze(
     # Drop domains not in this persona's Location Report (e.g. feasibility for buyers).
     report_domains = filter_domains_for_persona(domains, persona_key)
     response = ScorecardResponse(
-        location=LocationInfo(geohash8=gh8),
+        location=LocationInfo(
+            geohash8=gh8,
+            district=district["name"] if district else None,
+            state=district["state"] if district else None,
+        ),
         domains=report_domains,
         layer_versions=layer_versions,
         scoring_profile=persona_key,

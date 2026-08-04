@@ -61,18 +61,18 @@ DOMAIN_DEPENDENCIES: tuple[DomainDependency, ...] = (
     DomainDependency(
         domain="security",
         tier=2,
-        required_layers=(),
+        required_layers=("security",),
         pipeline_tasks=(),
-        phase="2+",
-        note="District-level incident aggregates only — later phase.",
+        phase="2",
+        note="District-level incident aggregate + police proximity (no address-level).",
     ),
     DomainDependency(
         domain="tenure",
         tier=2,
         required_layers=("planning",),
         pipeline_tasks=(),
-        phase="2+",
-        note="Planning overlays (acquisition / layout / setback).",
+        phase="2",
+        note="Advisory planning overlays (acquisition / layout / setback).",
     ),
     DomainDependency(
         domain="market",
@@ -124,7 +124,8 @@ def pending_note(domain: str, published: dict[str, str] | None = None) -> str:
     if dep is None:
         return "Unknown domain."
     published = published or {}
-    if dep.phase != "1":
+    # Domains with no required layers are not yet wired (later phase).
+    if not dep.required_layers:
         return f"Ships in a later phase (Tier {dep.tier})."
     missing = [
         layer
