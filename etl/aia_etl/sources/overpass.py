@@ -32,6 +32,7 @@ _SELECTORS: tuple[tuple[str, str], ...] = (
     ("amenity", "doctors"), ("amenity", "pharmacy"), ("amenity", "marketplace"),
     ("amenity", "bank"), ("amenity", "atm"), ("amenity", "fuel"),
     ("amenity", "place_of_worship"), ("amenity", "drinking_water"),
+    ("amenity", "police"),
     ("shop", "supermarket"), ("shop", "mall"),
     ("man_made", "water_well"), ("man_made", "water_works"), ("man_made", "borehole"),
     ("power", "substation"), ("power", "plant"),

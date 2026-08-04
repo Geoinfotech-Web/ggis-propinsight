@@ -159,6 +159,7 @@ async def district_for_point(
             SELECT id, name, state, density_class
             FROM districts
             WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326))
+            ORDER BY ST_Area(geom) ASC   -- most-specific district wins
             LIMIT 1
             """
         ),

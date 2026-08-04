@@ -32,10 +32,13 @@ class ETLSettings(BaseSettings):
     gee_service_account_key: str | None = None
     gee_project: str | None = None
 
-    # POI sources to ingest (comma-separated): overpass | overture | ...
+    # POI sources to ingest (comma-separated): overpass | overture | grid3 | ...
     poi_sources: str = "overpass"
     # Overture Maps release (GeoParquet). Bump to the latest release periodically.
     overture_release: str = "2024-11-13.0"
+    # GRID3 Nigeria ArcGIS FeatureServer layer URLs (health / education). Non-OSM.
+    grid3_health_url: str = ""
+    grid3_education_url: str = ""
 
     # Data working directory (COGs, extracts) — mounted volume in compose.
     data_dir: str = "/data"

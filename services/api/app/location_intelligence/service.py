@@ -59,6 +59,7 @@ from app.location_intelligence.security import (
     nearest_police_distance_m,
     score_security,
 )
+from app.location_intelligence.summary import build_summary
 from app.location_intelligence.tenure import overlapping_planning, score_tenure
 from app.scoring.engine import DomainScore
 
@@ -320,6 +321,8 @@ async def analyze(
     priority = domain_priority(persona_key)
     # Drop domains not in this persona's Location Report (e.g. feasibility for buyers).
     report_domains = filter_domains_for_persona(domains, persona_key)
+    persona_meta = persona_public(persona_key)
+    fit = fit_score(report_domains, persona_key)
     response = ScorecardResponse(
         location=LocationInfo(
             geohash8=gh8,
@@ -330,8 +333,9 @@ async def analyze(
         layer_versions=layer_versions,
         scoring_profile=persona_key,
         cached=False,
-        persona=PersonaInfo(**persona_public(persona_key)),
-        fit_score=fit_score(report_domains, persona_key),
+        persona=PersonaInfo(**persona_meta),
+        fit_score=fit,
+        summary=build_summary(persona_meta["label"], fit, report_domains),
         domain_priority=priority,
     )
 

@@ -65,6 +65,14 @@ def replace_source_pois(
     conn.execute(text("DELETE FROM poi WHERE source = :source"), {"source": source})
     if not records:
         return 0
+    # Advance the id sequence past any explicit-id rows (e.g. seeded fixtures)
+    # so auto-generated ids never collide with them.
+    conn.execute(
+        text(
+            "SELECT setval(pg_get_serial_sequence('poi', 'id'), "
+            "(SELECT COALESCE(MAX(id), 0) FROM poi) + 1, false)"
+        )
+    )
     conn.execute(
         text(
             """

@@ -62,4 +62,5 @@ class ScorecardResponse(BaseModel):
     cached: bool = False
     persona: PersonaInfo | None = None
     fit_score: float | None = None
+    summary: str | None = None
     domain_priority: list[str] = Field(default_factory=list)

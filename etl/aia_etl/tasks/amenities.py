@@ -33,6 +33,10 @@ def _fetch(source: str, bbox: BBox) -> list[PoiRecord]:
         from aia_etl.sources.overture import fetch_overture
 
         return fetch_overture(bbox)
+    if source == "grid3":
+        from aia_etl.sources.grid3 import fetch_grid3
+
+        return fetch_grid3(bbox)
     raise ValueError(f"unknown POI source {source!r}")
 
 

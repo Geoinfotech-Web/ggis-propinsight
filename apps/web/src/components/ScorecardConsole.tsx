@@ -79,27 +79,61 @@ const TENURE_LABELS: Record<string, string> = {
   overlays: "Planning overlays",
 };
 
-function statusClasses(status: DomainResult["status"], dark: boolean): string {
-  if (status === "ok") {
-    return dark
-      ? "border-teal-700/60 bg-teal-950/50 text-teal-300"
-      : "border-teal-200 bg-teal-50 text-teal-800";
-  }
-  if (status === "degraded") {
-    return dark
-      ? "border-amber-700/60 bg-amber-950/40 text-amber-300"
-      : "border-amber-200 bg-amber-50 text-amber-800";
-  }
-  return dark
-    ? "border-gray-700 bg-gray-900 text-gray-400"
-    : "border-slate-200 bg-slate-100 text-slate-600";
-}
-
 function scoreBarColor(score: number | null, status: DomainResult["status"]): string {
   if (status === "pending" || score === null) return "#94a3b8";
   if (score >= 70) return "#0d9488";
   if (score >= 40) return "#ca8a04";
   return "#dc2626";
+}
+
+/**
+ * Badge that reflects score quality (not just data availability): a scored
+ * domain shows Strong / Moderate / Weak, so a poor score never reads as a
+ * green "OK". Degraded / pending keep their own meaning.
+ */
+function qualityBadge(
+  score: number | null,
+  status: DomainResult["status"],
+  dark: boolean,
+): { label: string; classes: string } {
+  if (status === "pending") {
+    return {
+      label: "No data",
+      classes: dark
+        ? "border-gray-700 bg-gray-900 text-gray-400"
+        : "border-slate-200 bg-slate-100 text-slate-600",
+    };
+  }
+  if (status === "degraded" || score === null) {
+    return {
+      label: status === "degraded" ? "Limited" : "No score",
+      classes: dark
+        ? "border-amber-700/60 bg-amber-950/40 text-amber-300"
+        : "border-amber-200 bg-amber-50 text-amber-800",
+    };
+  }
+  if (score >= 70) {
+    return {
+      label: "Strong",
+      classes: dark
+        ? "border-teal-700/60 bg-teal-950/50 text-teal-300"
+        : "border-teal-200 bg-teal-50 text-teal-800",
+    };
+  }
+  if (score >= 40) {
+    return {
+      label: "Moderate",
+      classes: dark
+        ? "border-amber-700/60 bg-amber-950/40 text-amber-300"
+        : "border-amber-200 bg-amber-50 text-amber-800",
+    };
+  }
+  return {
+    label: "Weak",
+    classes: dark
+      ? "border-red-800/60 bg-red-950/40 text-red-300"
+      : "border-red-200 bg-red-50 text-red-700",
+  };
 }
 
 function formatMetres(m: number): string {
@@ -388,6 +422,16 @@ export function ScorecardConsole({
                   />
                 </div>
               </div>
+              {card.summary && (
+                <p
+                  className={clsx(
+                    "mb-2 text-[12px] font-medium leading-snug",
+                    dark ? "text-gray-200" : "text-slate-700",
+                  )}
+                >
+                  {card.summary}
+                </p>
+              )}
               <div className="tabular-nums">
                 geohash <span className="font-semibold">{card.location.geohash8}</span>
                 {card.location.district && <> · {card.location.district}</>}
@@ -439,14 +483,19 @@ export function ScorecardConsole({
                           <h3 className="font-display text-base font-semibold tracking-tight">
                             {domainLabel(d)}
                           </h3>
-                          <span
-                            className={clsx(
-                              "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                              statusClasses(r.status, dark),
-                            )}
-                          >
-                            {r.status}
-                          </span>
+                          {(() => {
+                            const badge = qualityBadge(r.score, r.status, dark);
+                            return (
+                              <span
+                                className={clsx(
+                                  "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                  badge.classes,
+                                )}
+                              >
+                                {badge.label}
+                              </span>
+                            );
+                          })()}
                           {highPriority && (
                             <span
                               className={clsx(

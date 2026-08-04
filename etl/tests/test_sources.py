@@ -1,6 +1,7 @@
 """Tests for multi-source POI ingestion (pure logic; no network/DB)."""
 from __future__ import annotations
 
+from aia_etl.sources.arcgis import build_params, map_feature
 from aia_etl.sources.base import FCT_BBOX, PoiRecord, dedup_records
 from aia_etl.sources.overpass import build_query, map_element
 from aia_etl.sources.overture import map_overture_category
@@ -51,3 +52,25 @@ def test_overture_category_mapping():
     assert map_overture_category("gas_station") == "fuel"
     assert map_overture_category("night_club") is None
     assert map_overture_category(None) is None
+
+
+def test_arcgis_feature_mapping_and_name_fallback():
+    feat = {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [7.49, 9.06]},
+        "properties": {"prmry_name": "Wuse District Hospital"},
+    }
+    rec = map_feature(feat, "hospital")  # no explicit name_field -> fallback
+    assert rec and rec.category == "hospital" and rec.source == "grid3"
+    assert rec.name == "Wuse District Hospital"
+    assert rec.lon == 7.49 and rec.lat == 9.06
+
+    non_point = {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": []},
+                 "properties": {}}
+    assert map_feature(non_point, "hospital") is None
+
+
+def test_arcgis_query_params_carry_bbox():
+    p = build_params((6.75, 8.25, 7.75, 9.35), offset=0)
+    assert p["geometry"] == "6.75,8.25,7.75,9.35"
+    assert p["f"] == "geojson" and p["inSR"] == "4326"

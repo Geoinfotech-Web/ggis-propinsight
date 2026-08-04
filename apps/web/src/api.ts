@@ -22,6 +22,7 @@ export type Scorecard = {
   cached: boolean;
   persona?: PersonaInfo | null;
   fit_score?: number | null;
+  summary?: string | null;
   domain_priority?: string[];
 };
 

@@ -18,6 +18,7 @@ AIA_CATEGORIES = (
     "bank",
     "fuel",
     "worship",
+    "police",  # security infrastructure (not an amenity; used by the security domain)
 )
 
 # (osm_key, osm_value) -> AIA category. Ordered by specificity where it matters.
@@ -53,6 +54,8 @@ _TAG_MAP: dict[tuple[str, str], str] = {
     ("amenity", "fuel"): "fuel",
     # Worship
     ("amenity", "place_of_worship"): "worship",
+    # Security infrastructure
+    ("amenity", "police"): "police",
 }
 
 
