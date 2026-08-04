@@ -21,7 +21,14 @@ AMENITY_WEIGHTS: dict[str, float] = {
 }
 
 # Categories shown as named lists / map markers within the scoring radius.
-NEARBY_CATEGORIES: tuple[str, ...] = ("school", "hospital", "market", "bank")
+NEARBY_CATEGORIES: tuple[str, ...] = (
+    "school",
+    "hospital",
+    "market",
+    "bank",
+    "power",
+    "fuel",
+)
 
 # Full credit within 500 m; zero beyond 5 km (Phase 1 defaults).
 D_MIN_M = 500.0

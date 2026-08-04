@@ -4,6 +4,7 @@ import { AMENITY_MARKER_COLORS } from "../lib/amenitiesMap";
 import type { Theme } from "../theme";
 import type { OverlayLayer } from "./LayersPanel";
 import { IconChevronDown, IconChevronUp } from "./Icons";
+import { PoiSymbol } from "./PoiSymbol";
 
 const SCORE_LEGEND = [
   { label: "Strong (70–100)", color: "#0d9488" },
@@ -13,10 +14,16 @@ const SCORE_LEGEND = [
 ];
 
 const AMENITY_LEGEND = [
-  { id: "school", label: "School", color: AMENITY_MARKER_COLORS.school },
-  { id: "hospital", label: "Hospital / clinic", color: AMENITY_MARKER_COLORS.hospital },
-  { id: "market", label: "Market", color: AMENITY_MARKER_COLORS.market },
-  { id: "bank", label: "Bank", color: AMENITY_MARKER_COLORS.bank },
+  { id: "school_poi", label: "School", color: AMENITY_MARKER_COLORS.school },
+  { id: "hospital_poi", label: "Hospital / clinic", color: AMENITY_MARKER_COLORS.hospital },
+  { id: "bank_poi", label: "Bank", color: AMENITY_MARKER_COLORS.bank },
+  { id: "market_poi", label: "Market", color: AMENITY_MARKER_COLORS.market },
+  { id: "power_poi", label: "Power", color: AMENITY_MARKER_COLORS.power },
+  { id: "fuel_poi", label: "Fuel station", color: AMENITY_MARKER_COLORS.fuel },
+];
+
+const SECURITY_LEGEND = [
+  { id: "police", label: "Police station", color: AMENITY_MARKER_COLORS.police },
 ];
 
 type Props = {
@@ -30,7 +37,10 @@ export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) 
   const [collapsed, setCollapsed] = useState(collapsedByDefault);
   const dark = theme === "dark";
   const visibleOverlays = layers.filter((l) => l.enabled);
-  const showAmenityCats = layers.some((l) => l.id === "amenities_poi" && l.enabled);
+  const visibleAmenityLegend = AMENITY_LEGEND.filter((item) =>
+    layers.some((layer) => layer.id === item.id && layer.enabled),
+  );
+  const showSecurityCats = layers.some((l) => l.id === "security_poi" && l.enabled);
 
   return (
     <div
@@ -93,7 +103,7 @@ export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) 
             </div>
           </div>
 
-          {showAmenityCats && (
+          {visibleAmenityLegend.length > 0 && (
             <div>
               <p
                 className={clsx(
@@ -104,13 +114,37 @@ export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) 
                 Amenities (5 km)
               </p>
               <div className="space-y-1.5">
-                {AMENITY_LEGEND.map((item) => (
+                {visibleAmenityLegend.map((item) => (
                   <div key={item.id} className="flex items-center gap-2">
+                    <PoiSymbol category={item.id.replace("_poi", "")} color={item.color} size={20} />
                     <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ background: item.color }}
-                      aria-hidden
-                    />
+                      className={clsx(
+                        "text-[11px] font-medium",
+                        dark ? "text-gray-200" : "text-slate-800",
+                      )}
+                    >
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showSecurityCats && (
+            <div>
+              <p
+                className={clsx(
+                  "mb-1.5 text-[10px] font-semibold uppercase tracking-widest",
+                  dark ? "text-gray-500" : "text-slate-500",
+                )}
+              >
+                Security (5 km)
+              </p>
+              <div className="space-y-1.5">
+                {SECURITY_LEGEND.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2">
+                    <PoiSymbol category={item.id} color={item.color} size={20} />
                     <span
                       className={clsx(
                         "text-[11px] font-medium",
@@ -138,11 +172,15 @@ export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) 
               <div className="space-y-1.5">
                 {visibleOverlays.map((layer) => (
                   <div key={layer.id} className="flex items-center gap-2">
-                    <span
-                      className="h-3 w-3 shrink-0 rounded-sm"
-                      style={{ background: layer.swatch }}
-                      aria-hidden
-                    />
+                    {layer.symbol ? (
+                      <PoiSymbol category={layer.symbol} color={layer.swatch} size={20} />
+                    ) : (
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-sm"
+                        style={{ background: layer.swatch }}
+                        aria-hidden
+                      />
+                    )}
                     <span
                       className={clsx(
                         "text-[11px] font-medium",

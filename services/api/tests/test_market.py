@@ -107,6 +107,23 @@ def test_trend_and_yield_require_compatible_samples():
     )
     assert "% (recent 12 months)" in ds.indicators["trend"]
     assert ds.indicators["gross_yield"] == "7.8% indicative"
+    assert "listings" not in ds.indicators
+    assert "listing_kind" not in ds.indicators
+
+
+def test_developer_does_not_receive_property_listings():
+    samples = [
+        _sample("land", 25_000_000, "2026-06-01", unit="NGN/plot"),
+        _sample("sale", 50_000_000, "2026-06-01"),
+    ]
+    ds = score_market(
+        samples,
+        {("land", "NGN/plot"): 30_000_000},
+        persona="developer",
+        as_of=date(2026, 8, 1),
+    )
+    assert "listings" not in ds.indicators
+    assert "listing_kind" not in ds.indicators
 
 
 def test_confidence_reflects_depth_recency_and_verification():

@@ -219,16 +219,26 @@ async def _score_security(
     required = REQUIRED_LAYERS["security"]
     if not layers_ready(versions, required) or session is None:
         return _pending("security", versions)
+    nearby_police = await pois_within_radius(
+        session,
+        lon,
+        lat,
+        categories=("police",),
+        radius_m=5000.0,
+    )
     # Security is a district-level aggregate — a point outside covered districts
     # cannot be scored honestly.
     if district is None:
-        return DomainResult(
+        result = DomainResult(
             score=None,
             confidence="Low",
             status="degraded",
             evidence={},
             note="Security is district-level; this point is outside covered districts.",
         )
+        if nearby_police:
+            result.evidence["nearby"] = nearby_police
+        return result
     incidents = await district_incidents(session, district["id"])
     police_m = await nearest_police_distance_m(session, lon, lat)
     ds = score_security(
@@ -238,7 +248,10 @@ async def _score_security(
         by_category=None if incidents is None else incidents["by_category"],
         district=district["name"],
     )
-    return domainscore_to_result(ds, status="ok")
+    result = domainscore_to_result(ds, status="ok")
+    if nearby_police:
+        result.evidence["nearby"] = nearby_police
+    return result
 
 
 async def _score_tenure(

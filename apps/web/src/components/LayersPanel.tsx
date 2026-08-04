@@ -2,14 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import type { Theme } from "../theme";
 import { IconChevronLeft, IconLayers } from "./Icons";
+import { PoiSymbol } from "./PoiSymbol";
 
-export type OverlayLayerId = "score_marker" | "flood_context" | "amenities_poi";
+export type OverlayLayerId =
+  | "score_marker"
+  | "flood_context"
+  | "school_poi"
+  | "hospital_poi"
+  | "bank_poi"
+  | "market_poi"
+  | "power_poi"
+  | "fuel_poi"
+  | "security_poi";
 
 export type OverlayLayer = {
   id: OverlayLayerId;
   label: string;
   description: string;
   swatch: string;
+  symbol?: string;
   enabled: boolean;
 };
 
@@ -49,6 +60,7 @@ function Row({
   onToggle,
   theme,
   swatch,
+  symbol,
 }: {
   label: string;
   hint?: string;
@@ -56,17 +68,22 @@ function Row({
   onToggle: () => void;
   theme: Theme;
   swatch: string;
+  symbol?: string;
 }) {
   const dark = theme === "dark";
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <span
-            className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
-            style={{ backgroundColor: swatch }}
-            aria-hidden
-          />
+          {symbol ? (
+            <PoiSymbol category={symbol} color={swatch} size={20} />
+          ) : (
+            <span
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+              style={{ backgroundColor: swatch }}
+              aria-hidden
+            />
+          )}
           <p className={clsx("text-[12px] font-medium leading-tight", dark ? "text-gray-200" : "text-slate-800")}>
             {label}
           </p>
@@ -188,6 +205,7 @@ export function LayersPanel({ theme, layers, onToggle }: Props) {
                 onToggle={() => onToggle(layer.id)}
                 theme={theme}
                 swatch={layer.swatch}
+                symbol={layer.symbol}
               />
             ))}
           </div>

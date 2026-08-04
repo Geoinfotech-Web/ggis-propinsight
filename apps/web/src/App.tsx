@@ -15,17 +15,34 @@ import {
   type BasemapId,
 } from "./lib/basemap";
 import {
-  AMENITY_CIRCLE_LAYER,
-  AMENITY_LABEL_LAYER,
-  AMENITY_SOURCE_ID,
+  AMENITY_MARKER_COLORS,
+  createPoiSymbolElement,
   nearbyFromScorecard,
-  nearbyToGeoJSON,
 } from "./lib/amenitiesMap";
 import { loadPersona, savePersona, type PersonaKey } from "./lib/personas";
 import { applyTheme, loadTheme, type Theme } from "./theme";
 
 const FCT_CENTER: [number, number] = [7.4913, 9.0579];
 const FCT_HOME_ZOOM = 11;
+
+const POI_LAYER_BY_CATEGORY: Record<string, OverlayLayerId> = {
+  school: "school_poi",
+  hospital: "hospital_poi",
+  bank: "bank_poi",
+  market: "market_poi",
+  power: "power_poi",
+  fuel: "fuel_poi",
+  police: "security_poi",
+};
+
+const AMENITY_LAYER_IDS: OverlayLayerId[] = [
+  "school_poi",
+  "hospital_poi",
+  "bank_poi",
+  "market_poi",
+  "power_poi",
+  "fuel_poi",
+];
 
 const DEFAULT_LAYERS: OverlayLayer[] = [
   {
@@ -43,73 +60,68 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
     enabled: true,
   },
   {
-    id: "amenities_poi",
-    label: "Amenity context",
-    description: "Named schools, hospitals, markets, banks (5 km)",
-    swatch: "#0d9488",
+    id: "school_poi",
+    label: "Schools (5 km)",
+    description: "Schools within the selected location's buffer",
+    swatch: AMENITY_MARKER_COLORS.school,
+    symbol: "school",
+    enabled: true,
+  },
+  {
+    id: "hospital_poi",
+    label: "Hospitals (5 km)",
+    description: "Hospitals and clinics within the buffer",
+    swatch: AMENITY_MARKER_COLORS.hospital,
+    symbol: "hospital",
+    enabled: true,
+  },
+  {
+    id: "bank_poi",
+    label: "Banks (5 km)",
+    description: "Banks within the selected location's buffer",
+    swatch: AMENITY_MARKER_COLORS.bank,
+    symbol: "bank",
+    enabled: true,
+  },
+  {
+    id: "market_poi",
+    label: "Markets (5 km)",
+    description: "Markets within the selected location's buffer",
+    swatch: AMENITY_MARKER_COLORS.market,
+    symbol: "market",
+    enabled: true,
+  },
+  {
+    id: "power_poi",
+    label: "Power (5 km)",
+    description: "Power infrastructure within the buffer",
+    swatch: AMENITY_MARKER_COLORS.power,
+    symbol: "power",
+    enabled: true,
+  },
+  {
+    id: "fuel_poi",
+    label: "Fuel stations (5 km)",
+    description: "Fuel stations within the selected location's buffer",
+    swatch: AMENITY_MARKER_COLORS.fuel,
+    symbol: "fuel",
+    enabled: true,
+  },
+  {
+    id: "security_poi",
+    label: "Security (5 km)",
+    description: "Police stations within the selected location's buffer",
+    swatch: AMENITY_MARKER_COLORS.police,
+    symbol: "police",
     enabled: true,
   },
 ];
-
-function syncAmenityOverlay(
-  map: maplibregl.Map,
-  card: Scorecard | null,
-  visible: boolean,
-) {
-  const pois = visible ? nearbyFromScorecard(card?.domains.amenities?.evidence) : [];
-  const data = nearbyToGeoJSON(pois);
-
-  if (map.getSource(AMENITY_SOURCE_ID)) {
-    (map.getSource(AMENITY_SOURCE_ID) as maplibregl.GeoJSONSource).setData(data);
-  } else {
-    map.addSource(AMENITY_SOURCE_ID, { type: "geojson", data });
-  }
-
-  if (!map.getLayer(AMENITY_CIRCLE_LAYER)) {
-    map.addLayer({
-      id: AMENITY_CIRCLE_LAYER,
-      type: "circle",
-      source: AMENITY_SOURCE_ID,
-      paint: {
-        "circle-radius": 6,
-        "circle-color": ["get", "color"],
-        "circle-stroke-width": 1.5,
-        "circle-stroke-color": "#ffffff",
-        "circle-opacity": 0.95,
-      },
-    });
-  }
-  if (!map.getLayer(AMENITY_LABEL_LAYER)) {
-    map.addLayer({
-      id: AMENITY_LABEL_LAYER,
-      type: "symbol",
-      source: AMENITY_SOURCE_ID,
-      layout: {
-        "text-field": ["get", "name"],
-        "text-font": ["Open Sans Regular"],
-        "text-size": 11,
-        "text-offset": [0, 1.15],
-        "text-anchor": "top",
-        "text-max-width": 10,
-        "text-optional": true,
-      },
-      paint: {
-        "text-color": "#0f172a",
-        "text-halo-color": "#ffffff",
-        "text-halo-width": 1.25,
-      },
-    });
-  }
-
-  const vis = visible && pois.length > 0 ? "visible" : "none";
-  if (map.getLayer(AMENITY_CIRCLE_LAYER)) map.setLayoutProperty(AMENITY_CIRCLE_LAYER, "visibility", vis);
-  if (map.getLayer(AMENITY_LABEL_LAYER)) map.setLayoutProperty(AMENITY_LABEL_LAYER, "visibility", vis);
-}
 
 export default function App() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
+  const poiMarkersRef = useRef<maplibregl.Marker[]>([]);
   const basemapIdRef = useRef<BasemapId>(DEFAULT_BASEMAP_ID);
   const lastPointRef = useRef<{ lon: number; lat: number; label?: string } | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
@@ -218,6 +230,8 @@ export default function App() {
       window.removeEventListener("resize", resize);
       markerRef.current?.remove();
       markerRef.current = null;
+      poiMarkersRef.current.forEach((marker) => marker.remove());
+      poiMarkersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
@@ -259,10 +273,9 @@ export default function App() {
           .setLngLat(markerLngLat)
           .addTo(map);
       }
-      syncAmenityOverlay(map, card, layerEnabled("amenities_poi"));
       map.resize();
     });
-  }, [basemapId, layerEnabled, card]);
+  }, [basemapId, layerEnabled]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -281,9 +294,56 @@ export default function App() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const apply = () => syncAmenityOverlay(map, card, layerEnabled("amenities_poi"));
-    if (map.isStyleLoaded()) apply();
-    else map.once("load", apply);
+
+    poiMarkersRef.current.forEach((marker) => marker.remove());
+    poiMarkersRef.current = [];
+
+    const amenityPois = nearbyFromScorecard(card?.domains.amenities?.evidence).filter((poi) => {
+      const layerId = POI_LAYER_BY_CATEGORY[poi.category];
+      return layerId ? layerEnabled(layerId) : false;
+    });
+    const securityPois = layerEnabled("security_poi")
+      ? nearbyFromScorecard(card?.domains.security?.evidence)
+      : [];
+
+    for (const poi of [...amenityPois, ...securityPois]) {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.title = `${poi.name} · ${(poi.distance_m / 1000).toFixed(1)} km away`;
+      element.setAttribute("aria-label", element.title);
+      Object.assign(element.style, {
+        width: "26px",
+        height: "26px",
+        borderRadius: "9999px",
+        border: "2px solid white",
+        backgroundColor: AMENITY_MARKER_COLORS[poi.category] ?? "#0d9488",
+        boxShadow: "0 1px 5px rgba(15, 23, 42, 0.65)",
+        cursor: "pointer",
+        color: "white",
+        display: "grid",
+        placeItems: "center",
+        padding: "0",
+      });
+      element.appendChild(createPoiSymbolElement(poi.category, 15));
+
+      const popupContent = document.createElement("div");
+      const popupName = document.createElement("strong");
+      popupName.textContent = poi.name;
+      const popupMeta = document.createElement("div");
+      popupMeta.textContent = `${poi.category.replaceAll("_", " ")} · ${(poi.distance_m / 1000).toFixed(1)} km away`;
+      popupContent.append(popupName, popupMeta);
+
+      const marker = new maplibregl.Marker({ element, anchor: "center" })
+        .setLngLat([poi.lon, poi.lat])
+        .setPopup(new maplibregl.Popup({ offset: 12 }).setDOMContent(popupContent))
+        .addTo(map);
+      poiMarkersRef.current.push(marker);
+    }
+
+    return () => {
+      poiMarkersRef.current.forEach((marker) => marker.remove());
+      poiMarkersRef.current = [];
+    };
   }, [card, layers, layerEnabled]);
 
   const flyAndAnalyse = (lon: number, lat: number, label?: string) => {
@@ -301,6 +361,7 @@ export default function App() {
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
   const dark = theme === "dark";
   const nearbyAmenities = nearbyFromScorecard(card?.domains.amenities?.evidence);
+  const anyAmenityLayerEnabled = AMENITY_LAYER_IDS.some((id) => layerEnabled(id));
 
   const focusNearby = (item: NearbyPoiItem) => {
     if (item.lon == null || item.lat == null) return;
@@ -348,7 +409,7 @@ export default function App() {
 
           {/* Flood Watch MapPanel layout: Legend bottom-left · Home+Basemap+Layers under zoom */}
           <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100vw-5.5rem)] space-y-2 sm:max-w-none">
-            {nearbyAmenities.length > 0 && layerEnabled("amenities_poi") && (
+            {nearbyAmenities.length > 0 && anyAmenityLayerEnabled && (
               <div className="pointer-events-auto">
                 <button
                   type="button"

@@ -1,7 +1,11 @@
 """Unit tests for amenities scoring (fct-v1 + linear decay)."""
 from __future__ import annotations
 
-from app.location_intelligence.amenities import AMENITY_WEIGHTS, score_amenities
+from app.location_intelligence.amenities import (
+    AMENITY_WEIGHTS,
+    NEARBY_CATEGORIES,
+    score_amenities,
+)
 from app.scoring.engine import linear_decay
 
 
@@ -43,3 +47,14 @@ def test_amenities_includes_name_in_evidence_raw():
 
 def test_linear_decay_midpoint():
     assert linear_decay(2750, 500, 5000) == 0.5
+
+
+def test_map_amenity_categories_cover_requested_layers():
+    assert set(NEARBY_CATEGORIES) == {
+        "school",
+        "hospital",
+        "market",
+        "bank",
+        "power",
+        "fuel",
+    }

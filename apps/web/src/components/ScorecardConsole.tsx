@@ -409,6 +409,9 @@ export function ScorecardConsole({
 
   const topDomains = new Set(orderedDomains.slice(0, 3));
   const personaLabel = card?.persona?.label ?? personaDef.label;
+  const showMarketListings = ["home_buyer", "tenant"].includes(
+    card?.persona?.key ?? persona,
+  );
 
   return (
     <aside
@@ -760,7 +763,7 @@ export function ScorecardConsole({
                           );
                         })()}
 
-                        {d === "market" && (() => {
+                        {d === "market" && showMarketListings && (() => {
                           const evidence = r.evidence ?? {};
                           const listings = parseMarketListings(evidence);
                           const listingKind = evidence.listing_kind === "rent" ? "rent" : "sale";

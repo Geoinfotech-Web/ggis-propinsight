@@ -14,9 +14,11 @@ const CATEGORY_LABELS: Record<string, string> = {
   hospital: "Hospitals / clinics",
   market: "Markets",
   bank: "Banks",
+  power: "Power infrastructure",
+  fuel: "Fuel stations",
 };
 
-const CATEGORY_ORDER = ["school", "hospital", "market", "bank"] as const;
+const CATEGORY_ORDER = ["school", "hospital", "market", "bank", "power", "fuel"] as const;
 
 function formatMetres(m: number): string {
   if (m < 1000) return `${Math.round(m)} m`;
@@ -31,7 +33,7 @@ type Props = {
   onSelect?: (item: NearbyPoiItem) => void;
 };
 
-/** Full nearby amenities list (schools, hospitals, markets, banks). */
+/** Full nearby amenities list within the scorecard's 5 km search radius. */
 export function NearbyAmenitiesList({ theme, items, open, onClose, onSelect }: Props) {
   if (!open) return null;
   const dark = theme === "dark";

@@ -186,33 +186,6 @@ def score_market(
     sources = sorted({str(s["source"]) for s in valid if s.get("source")})
     observed = [_as_date(s.get("observed_at")) for s in valid]
     latest = max((d for d in observed if d is not None), default=None)
-    listing_rows = sorted(
-        primary,
-        key=lambda sample: (
-            _as_date(sample.get("observed_at")) or date.min,
-            -float(sample.get("distance_m") or 0.0),
-        ),
-        reverse=True,
-    )
-    listings = [
-        {
-            "id": sample.get("external_id"),
-            "title": sample.get("title") or sample.get("property_type") or "Property listing",
-            "area": sample.get("area"),
-            "address": sample.get("address"),
-            "bedrooms": sample.get("bedrooms"),
-            "property_type": sample.get("property_type"),
-            "price": round(float(sample["value"]), 0),
-            "unit": primary_key[1],
-            "observed_at": (
-                observed_date.isoformat()
-                if (observed_date := _as_date(sample.get("observed_at")))
-                else None
-            ),
-            "source_url": sample.get("source_url"),
-        }
-        for sample in listing_rows[:6]
-    ]
     ds.indicators = {
         "headline": f"Indicative {primary_key[0]} price from {len(primary)} nearby comparables.",
         "estimated_price": {
@@ -246,9 +219,40 @@ def score_market(
         "coverage_radius_m": radius_m,
         "as_of": latest.isoformat() if latest else "Observation dates not supplied",
         "method": "Inverse-distance interpolation; wider-layer median benchmark.",
-        "listing_kind": primary_key[0],
-        "listings": listings,
     }
+    if persona in {"home_buyer", "tenant"}:
+        listing_rows = sorted(
+            primary,
+            key=lambda sample: (
+                _as_date(sample.get("observed_at")) or date.min,
+                -float(sample.get("distance_m") or 0.0),
+            ),
+            reverse=True,
+        )
+        ds.indicators["listing_kind"] = primary_key[0]
+        ds.indicators["listings"] = [
+            {
+                "id": sample.get("external_id"),
+                "title": (
+                    sample.get("title")
+                    or sample.get("property_type")
+                    or "Property listing"
+                ),
+                "area": sample.get("area"),
+                "address": sample.get("address"),
+                "bedrooms": sample.get("bedrooms"),
+                "property_type": sample.get("property_type"),
+                "price": round(float(sample["value"]), 0),
+                "unit": primary_key[1],
+                "observed_at": (
+                    observed_date.isoformat()
+                    if (observed_date := _as_date(sample.get("observed_at")))
+                    else None
+                ),
+                "source_url": sample.get("source_url"),
+            }
+            for sample in listing_rows[:6]
+        ]
     return ds
 
 
