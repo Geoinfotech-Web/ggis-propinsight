@@ -1,6 +1,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { AMENITY_MARKER_COLORS } from "../lib/amenitiesMap";
+import { LAND_USE_COLORS, LAND_USE_LEGEND } from "../lib/landUseMap";
 import type { Theme } from "../theme";
 import type { OverlayLayer } from "./LayersPanel";
 import { IconChevronDown, IconChevronUp } from "./Icons";
@@ -36,11 +37,12 @@ type Props = {
 export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) {
   const [collapsed, setCollapsed] = useState(collapsedByDefault);
   const dark = theme === "dark";
-  const visibleOverlays = layers.filter((l) => l.enabled);
+  const visibleOverlays = layers.filter((l) => l.enabled && l.id !== "land_use");
   const visibleAmenityLegend = AMENITY_LEGEND.filter((item) =>
     layers.some((layer) => layer.id === item.id && layer.enabled),
   );
   const showSecurityCats = layers.some((l) => l.id === "security_poi" && l.enabled);
+  const showLandUse = layers.some((l) => l.id === "land_use" && l.enabled);
 
   return (
     <div
@@ -156,6 +158,46 @@ export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) 
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {showLandUse && (
+            <div>
+              <p
+                className={clsx(
+                  "mb-1.5 text-[10px] font-semibold uppercase tracking-widest",
+                  dark ? "text-gray-500" : "text-slate-500",
+                )}
+              >
+                Land use (reference)
+              </p>
+              <div className="space-y-1.5">
+                {LAND_USE_LEGEND.map(([category, label]) => (
+                  <div key={category} className="flex items-center gap-2">
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-sm border border-black/10"
+                      style={{ background: LAND_USE_COLORS[category] }}
+                      aria-hidden
+                    />
+                    <span
+                      className={clsx(
+                        "text-[11px] font-medium",
+                        dark ? "text-gray-200" : "text-slate-800",
+                      )}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p
+                className={clsx(
+                  "mt-2 text-[9px] leading-snug",
+                  dark ? "text-amber-300" : "text-amber-800",
+                )}
+              >
+                Open mapped context—not official AGIS zoning.
+              </p>
             </div>
           )}
 

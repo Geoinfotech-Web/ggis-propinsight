@@ -14,8 +14,43 @@ export type PersonaInfo = {
   blurb: string;
 };
 
+export type LandUseInfo = {
+  category: string;
+  label: string;
+  name: string | null;
+  source_class: string | null;
+  source_subtype: string | null;
+  designation: string;
+  source: string;
+  source_url: string | null;
+  effective_date: string | null;
+  advisory: string;
+};
+
+export type LandUseFeatureCollection = {
+  type: "FeatureCollection";
+  features: Array<{
+    type: "Feature";
+    id: string;
+    geometry: GeoJSON.Geometry;
+    properties: LandUseInfo;
+  }>;
+  metadata: {
+    status: "published" | "unpublished";
+    version: string | null;
+    feature_count?: number;
+    designation?: string;
+    advisory: string;
+  };
+};
+
 export type Scorecard = {
-  location: { district: string | null; state: string | null; geohash8: string | null };
+  location: {
+    district: string | null;
+    state: string | null;
+    geohash8: string | null;
+    land_use?: LandUseInfo | null;
+  };
   domains: Record<string, DomainResult>;
   layer_versions: Record<string, string>;
   scoring_profile: string;
@@ -51,5 +86,20 @@ export async function analyzePoint(
     }),
   });
   if (!res.ok) throw new Error(`analyze failed: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchLandUse(
+  bounds: [number, number, number, number],
+): Promise<LandUseFeatureCollection> {
+  const params = new URLSearchParams({
+    min_lon: bounds[0].toString(),
+    min_lat: bounds[1].toString(),
+    max_lon: bounds[2].toString(),
+    max_lat: bounds[3].toString(),
+    limit: "5000",
+  });
+  const res = await fetch(`/v1/locations/land-use?${params}`);
+  if (!res.ok) throw new Error(`land-use layer failed: ${res.status}`);
   return res.json();
 }

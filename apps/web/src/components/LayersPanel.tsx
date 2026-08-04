@@ -7,6 +7,7 @@ import { PoiSymbol } from "./PoiSymbol";
 export type OverlayLayerId =
   | "score_marker"
   | "flood_context"
+  | "land_use"
   | "school_poi"
   | "hospital_poi"
   | "bank_poi"
@@ -30,7 +31,17 @@ type Props = {
   onToggle: (id: OverlayLayerId) => void;
 };
 
-function Toggle({ on, onToggle, theme }: { on: boolean; onToggle: () => void; theme: Theme }) {
+function Toggle({
+  label,
+  on,
+  onToggle,
+  theme,
+}: {
+  label: string;
+  on: boolean;
+  onToggle: () => void;
+  theme: Theme;
+}) {
   const dark = theme === "dark";
   return (
     <button
@@ -42,6 +53,7 @@ function Toggle({ on, onToggle, theme }: { on: boolean; onToggle: () => void; th
       )}
       role="switch"
       aria-checked={on}
+      aria-label={`${on ? "Hide" : "Show"} ${label}`}
     >
       <span
         className={clsx(
@@ -94,7 +106,7 @@ function Row({
           </p>
         ) : null}
       </div>
-      <Toggle on={on} onToggle={onToggle} theme={theme} />
+      <Toggle label={label} on={on} onToggle={onToggle} theme={theme} />
     </div>
   );
 }

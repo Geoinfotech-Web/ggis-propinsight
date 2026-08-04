@@ -42,10 +42,24 @@ class DomainResult(BaseModel):
     note: str | None = None
 
 
+class LandUseInfo(BaseModel):
+    category: str
+    label: str
+    name: str | None = None
+    source_class: str | None = None
+    source_subtype: str | None = None
+    designation: str
+    source: str
+    source_url: str | None = None
+    effective_date: str | None = None
+    advisory: str
+
+
 class LocationInfo(BaseModel):
     district: str | None = None
     state: str | None = None
     geohash8: str | None = None
+    land_use: LandUseInfo | None = None
 
 
 class PersonaInfo(BaseModel):

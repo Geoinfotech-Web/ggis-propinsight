@@ -108,6 +108,25 @@ class PlanningLayer(Base):
     effective_date: Mapped[date | None] = mapped_column(Date)
 
 
+class LandUseArea(Base):
+    """Mapped land use; designation distinguishes reference data from official zoning."""
+
+    __tablename__ = "land_use_areas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    geom: Mapped[object] = mapped_column(Geometry("MULTIPOLYGON", srid=SRID))
+    source_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    category: Mapped[str] = mapped_column(String(40), index=True)
+    source_class: Mapped[str | None] = mapped_column(String(80))
+    source_subtype: Mapped[str | None] = mapped_column(String(80))
+    name: Mapped[str | None] = mapped_column(String(240))
+    designation: Mapped[str] = mapped_column(String(32), index=True)
+    source: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    effective_date: Mapped[date | None] = mapped_column(Date)
+    layer_version: Mapped[str] = mapped_column(String(20), index=True)
+
+
 class ScoringProfile(Base):
     """Versioned weights & normalisation params per domain (TDD §4.4).
 
@@ -245,5 +264,6 @@ Index("ix_poi_geom", Poi.geom, postgresql_using="gist")
 Index("ix_roads_geom", Road.geom, postgresql_using="gist")
 Index("ix_dem_samples_geom", DemSample.geom, postgresql_using="gist")
 Index("ix_planning_geom", PlanningLayer.geom, postgresql_using="gist")
+Index("ix_land_use_geom", LandUseArea.geom, postgresql_using="gist")
 Index("ix_reviews_geom", Review.geom, postgresql_using="gist")
 Index("ix_market_geom", MarketSample.geom, postgresql_using="gist")

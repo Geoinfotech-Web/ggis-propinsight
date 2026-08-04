@@ -46,8 +46,17 @@ curl -s http://localhost:8001/v1/locations/analyze \
 ```
 
 Flood is **live** (via GGIS / mock). POIs can be refreshed from OSM Overpass,
-Overture Maps, and GRID3 Nigeria. Roads, DEM, security, and planning remain
-demo-backed until their production ETL layers pass QA and publish atomically.
+Overture Maps, and GRID3 Nigeria. The map also serves a versioned open land-use
+reference layer from Overture/OpenStreetMap (residential, industrial, commercial,
+institutional, protected/reserve, agricultural, and related classes). It is
+context only—not statutory zoning; confirm allocations and development rights
+with AGIS/FCTA. Roads, DEM, security, and official planning remain demo-backed
+until their production ETL layers pass QA and publish atomically.
+
+```bash
+# Open land-use GeoJSON for the current map viewport
+curl -s "http://localhost:8001/v1/locations/land-use?min_lon=7.30&min_lat=8.90&max_lon=7.65&max_lat=9.20"
+```
 
 ## Frontend dev
 

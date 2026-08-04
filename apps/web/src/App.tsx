@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import maplibregl from "maplibre-gl";
-import { analyzePoint, type Scorecard } from "./api";
+import {
+  analyzePoint,
+  fetchLandUse,
+  type Scorecard,
+} from "./api";
 import { AppHeader } from "./components/AppHeader";
 import { BasemapSwitcher } from "./components/BasemapSwitcher";
 import { IconHome } from "./components/Icons";
@@ -20,6 +24,7 @@ import {
   nearbyFromScorecard,
 } from "./lib/amenitiesMap";
 import { loadPersona, savePersona, type PersonaKey } from "./lib/personas";
+import { hideLandUseLayer, showLandUseLayer } from "./lib/landUseMap";
 import { applyTheme, loadTheme, type Theme } from "./theme";
 
 const FCT_CENTER: [number, number] = [7.4913, 9.0579];
@@ -57,6 +62,13 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
     label: "Flood context",
     description: "GGIS hazard context (tiles soon)",
     swatch: "#0284c7",
+    enabled: true,
+  },
+  {
+    id: "land_use",
+    label: "Land use / masterplan context",
+    description: "Open mapped use; verify official zoning with AGIS/FCTA",
+    swatch: "#8b5cf6",
     enabled: true,
   },
   {
@@ -276,6 +288,52 @@ export default function App() {
       map.resize();
     });
   }, [basemapId, layerEnabled]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    let active = true;
+    let requestId = 0;
+    const enabled = layerEnabled("land_use");
+
+    const syncLandUse = async () => {
+      if (!active || !map.isStyleLoaded()) return;
+      if (!enabled) {
+        hideLandUseLayer(map);
+        return;
+      }
+      const currentRequest = ++requestId;
+      try {
+        const bounds = map.getBounds();
+        const data = await fetchLandUse([
+          bounds.getWest(),
+          bounds.getSouth(),
+          bounds.getEast(),
+          bounds.getNorth(),
+        ]);
+        if (
+          !active ||
+          currentRequest !== requestId ||
+          mapRef.current !== map ||
+          !map.isStyleLoaded()
+        ) {
+          return;
+        }
+        showLandUseLayer(map, data);
+      } catch (err) {
+        if (active) setMapError((err as Error).message);
+      }
+    };
+
+    void syncLandUse();
+    map.on("style.load", syncLandUse);
+    map.on("moveend", syncLandUse);
+    return () => {
+      active = false;
+      map.off("style.load", syncLandUse);
+      map.off("moveend", syncLandUse);
+    };
+  }, [basemapId, layers, layerEnabled]);
 
   useEffect(() => {
     const map = mapRef.current;

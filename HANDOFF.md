@@ -78,8 +78,8 @@ docker compose up -d etl-worker etl-beat
 
 ### Tests
 ```bash
-cd services/api && pip install -e ".[dev]" && pytest -q      # 48 tests
-cd etl && pip install pytest "sqlalchemy>=2.0" pydantic-settings requests && pytest -q   # 37 tests
+cd services/api && pip install -e ".[dev]" && pytest -q      # 58 tests
+cd etl && pip install pytest "sqlalchemy>=2.0" pydantic-settings requests && pytest -q   # 42 tests
 ```
 
 ---
@@ -141,6 +141,8 @@ Key files:
 - `etl/aia_etl/layers.py` — versioning + cache-invalidation sweep.
 - `etl/aia_etl/gee.py` — Earth Engine DEM / Sentinel-2 exports.
 - `etl/aia_etl/tasks/` — osm, dem, flood_tiles pipelines.
+- `etl/aia_etl/tasks/land_use.py` — Overture/OSM open land-use context publisher.
+- `services/api/app/location_intelligence/land_use.py` — viewport GeoJSON and point classification; AGIS advisory boundary.
 
 ---
 
@@ -159,6 +161,9 @@ Key files:
 6. **Check domain readiness** — `GET /v1/meta/readiness` (and
    `etl/aia_etl/domain_deps.py`) for the Phase 1 unlock matrix.
 7. **Branch protection** on `main` + require CI, then move to PR-based flow.
+8. **Acquire the official AGIS land-use/masterplan soft copy and reuse approval**;
+   load it with `designation=official_masterplan` so it takes precedence over the
+   current Overture/OSM reference layer without changing the API or UI contract.
 
 ---
 

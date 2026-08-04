@@ -34,6 +34,7 @@ from app.location_intelligence.feasibility import (
     nearest_utility_distance_m,
     score_feasibility,
 )
+from app.location_intelligence.land_use import land_use_at_point
 from app.location_intelligence.market import market_samples_for_point, score_market
 from app.location_intelligence.personas import (
     domain_priority,
@@ -361,6 +362,7 @@ async def analyze(
 
     # --- Resolve containing district once (drives security + LocationInfo) ---
     district = await district_for_point(session, lon, lat) if session is not None else None
+    land_use = await land_use_at_point(session, lon, lat) if session is not None else None
 
     # --- Tier-1 domains gated by published ETL layers ---
     domains["amenities"] = await _score_amenities(session, lon, lat, versions)
@@ -387,6 +389,7 @@ async def analyze(
             geohash8=gh8,
             district=district["name"] if district else None,
             state=district["state"] if district else None,
+            land_use=land_use,
         ),
         domains=report_domains,
         layer_versions=layer_versions,

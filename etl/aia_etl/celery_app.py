@@ -6,6 +6,7 @@ Refresh cycles:
   DEM & terrain ............ one-time + on new UAV surveys (manual/triggered)
   Agency registries ........ quarterly
   Market samples ........... monthly
+  Open land-use context .... monthly / per Overture release
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ app = Celery(
         "aia_etl.tasks.dem",
         "aia_etl.tasks.flood_tiles",
         "aia_etl.tasks.market",
+        "aia_etl.tasks.land_use",
     ],
 )
 
@@ -53,5 +55,9 @@ app.conf.beat_schedule = {
     "market-monthly": {
         "task": "aia_etl.tasks.market.refresh_market_samples",
         "schedule": crontab(minute=0, hour=3, day_of_month=2),
+    },
+    "land-use-monthly": {
+        "task": "aia_etl.tasks.land_use.refresh_land_use",
+        "schedule": crontab(minute=30, hour=3, day_of_month=2),
     },
 }

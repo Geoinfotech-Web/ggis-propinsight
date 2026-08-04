@@ -13,7 +13,16 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 # Canonical layer names tracked in the registry.
-LAYERS = ("poi", "roads", "dem", "hazard", "planning", "market", "security")
+LAYERS = (
+    "poi",
+    "roads",
+    "dem",
+    "hazard",
+    "planning",
+    "land_use",
+    "market",
+    "security",
+)
 UNPUBLISHED = "unpublished"
 
 

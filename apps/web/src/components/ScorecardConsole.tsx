@@ -518,6 +518,27 @@ export function ScorecardConsole({
                 geohash <span className="font-semibold">{card.location.geohash8}</span>
                 {card.location.district && <> · {card.location.district}</>}
               </div>
+              {card.location.land_use && (
+                <div
+                  className={clsx(
+                    "mt-2 rounded-md border px-2 py-1.5",
+                    dark
+                      ? "border-amber-800/70 bg-amber-950/30 text-amber-200"
+                      : "border-amber-200 bg-amber-50 text-amber-900",
+                  )}
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-wide">
+                    Mapped land use
+                  </p>
+                  <p className="text-xs font-semibold">{card.location.land_use.label}</p>
+                  {card.location.land_use.name && (
+                    <p className="truncate text-[10px]">{card.location.land_use.name}</p>
+                  )}
+                  <p className="mt-1 text-[9px] leading-snug">
+                    Reference context only—confirm zoning and development rights with AGIS/FCTA.
+                  </p>
+                </div>
+              )}
               <div className="tabular-nums">
                 profile <span className="font-semibold">{card.scoring_profile}</span>
                 {card.cached && (

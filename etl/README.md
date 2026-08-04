@@ -13,6 +13,7 @@ GDAL / rasterio / exactextract for raster analytics; QGIS-supported production w
 | Agency facility registries | Quarterly | Geocode, dedup against OSM POIs, field-verification flags |
 | Verified POIs (field) | Continuous | QField/ODK collection → admin review queue → publish |
 | Market samples | Monthly | Geocode → outlier filter → spatial price surfaces (kriging/IDW) |
+| Open land-use context | Monthly / Overture release | Overture `base/land_use` polygons → stable product classes → atomic `land_use` publish; explicitly non-statutory |
 
 ## `layer_version` discipline
 
@@ -47,6 +48,7 @@ Domain readiness is gated by published `layer_registry` versions — see
 | `tasks/osm.py` | `refresh_osm` — extract → clip → osm2pgsql → categorise → QA → publish → bump. |
 | `tasks/dem.py` | `terrain_derivatives` — slope, flow accumulation, TWI COGs → bump `dem`. |
 | `tasks/flood_tiles.py` | `mirror_hazard_tiles` — mirror GGIS hazard COGs on model-version change. |
+| `tasks/land_use.py` | `refresh_land_use` — Overture polygon query → classify → atomic PostGIS publish; never represented as official AGIS zoning. |
 
 The `layer_registry` table (Alembic migration `0002`) is the shared source of truth
 for current layer versions; the API reads it to stamp scorecards, ETL bumps it on
@@ -112,6 +114,7 @@ docker compose up --build etl-worker etl-beat
 # Trigger a pipeline manually (inside the worker container or a shell with deps):
 celery -A aia_etl.celery_app call aia_etl.tasks.osm.refresh_osm
 celery -A aia_etl.celery_app call aia_etl.tasks.flood_tiles.mirror_hazard_tiles
+celery -A aia_etl.celery_app call aia_etl.tasks.land_use.refresh_land_use
 
 # DEM straight from Earth Engine (Copernicus GLO-30) → slope/flow-acc/TWI COGs:
 celery -A aia_etl.celery_app call aia_etl.tasks.dem.dem_from_gee
