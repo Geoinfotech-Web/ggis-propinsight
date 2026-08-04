@@ -218,11 +218,16 @@ async def nearest_police_distance_m(
                    ) AS distance_m
             FROM poi
             WHERE category = 'police'
+              AND ST_DWithin(
+                    geom::geography,
+                    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                    :radius_m
+                  )
             ORDER BY geom <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
             LIMIT 1
             """
         ),
-        {"lon": lon, "lat": lat},
+        {"lon": lon, "lat": lat, "radius_m": POLICE_D_MAX},
     )
     row = result.first()
     return float(row.distance_m) if row else None

@@ -63,6 +63,21 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
+  web:
+    build: ./apps/web
+    environment:
+      # In the compose network the API is reachable as `api:8000`.
+      API_PROXY_TARGET: http://api:8000
+      VITE_USE_POLLING: "1"
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./apps/web:/repo/apps/web
+      - ./design:/repo/design:ro
+      - /repo/apps/web/node_modules   # keep the image's linux node_modules
+    depends_on:
+      - api
+
   etl-worker:
     build: ./etl
     env_file: .env

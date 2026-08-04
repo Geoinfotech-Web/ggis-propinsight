@@ -13,6 +13,10 @@ WEIGHTS: dict[str, float] = {
     "catchment": 0.20,
 }
 
+# A terrain sample further than this from the click isn't representative — treat
+# as no local DEM coverage rather than reporting a distant sample.
+DEM_SAMPLE_MAX_M = 2000.0
+
 # Flat ≤ 5°, unsuitable ≥ 25°.
 SLOPE_GOOD = 5.0
 SLOPE_BAD = 25.0
@@ -94,11 +98,16 @@ async def nearest_dem_sample(
                      ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
                    ) AS distance_m
             FROM dem_samples
+            WHERE ST_DWithin(
+                    geom::geography,
+                    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                    :radius_m
+                  )
             ORDER BY geom <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
             LIMIT 1
             """
         ),
-        {"lon": lon, "lat": lat},
+        {"lon": lon, "lat": lat, "radius_m": DEM_SAMPLE_MAX_M},
     )
     row = result.first()
     if row is None:
@@ -129,11 +138,16 @@ async def nearest_utility_distance_m(
                    ) AS distance_m
             FROM poi
             WHERE category IN ('water', 'power')
+              AND ST_DWithin(
+                    geom::geography,
+                    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                    :radius_m
+                  )
             ORDER BY geom <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
             LIMIT 1
             """
         ),
-        {"lon": lon, "lat": lat},
+        {"lon": lon, "lat": lat, "radius_m": UTIL_D_MAX},
     )
     row = result.first()
     return float(row.distance_m) if row else None

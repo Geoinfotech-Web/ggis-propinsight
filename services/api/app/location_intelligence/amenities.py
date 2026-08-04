@@ -72,9 +72,13 @@ def score_amenities(
 
 
 async def nearest_pois(
-    session: AsyncSession, lon: float, lat: float
+    session: AsyncSession, lon: float, lat: float, *, radius_m: float = D_MAX_M
 ) -> dict[str, dict[str, Any] | None]:
-    """Nearest POI per amenity category via PostGIS KNN (distance + name)."""
+    """Nearest POI per amenity category within `radius_m` (PostGIS KNN + name).
+
+    Capped by radius so a location with no nearby data reports "none" instead of
+    surfacing an amenity tens of km away (which scores ~0 anyway).
+    """
     categories = list(AMENITY_WEIGHTS.keys())
     result = await session.execute(
         text(
@@ -88,11 +92,16 @@ async def nearest_pois(
                    ) AS distance_m
             FROM poi
             WHERE category = ANY(:categories)
+              AND ST_DWithin(
+                    geom::geography,
+                    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                    :radius_m
+                  )
             ORDER BY category,
                      geom <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
             """
         ),
-        {"lon": lon, "lat": lat, "categories": categories},
+        {"lon": lon, "lat": lat, "categories": categories, "radius_m": radius_m},
     )
     found: dict[str, dict[str, Any]] = {}
     for row in result:
