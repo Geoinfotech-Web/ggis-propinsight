@@ -1,6 +1,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { getCurrentPosition } from "../lib/geocode";
+import { PERSONAS, type PersonaKey } from "../lib/personas";
 import type { Theme } from "../theme";
 import { IconBrandMark, IconLocate, IconMoon, IconSun } from "./Icons";
 import { SearchBar } from "./SearchBar";
@@ -10,14 +11,23 @@ type Props = {
   onToggleTheme: () => void;
   onSelectPlace: (lon: number, lat: number, label?: string) => void;
   locating?: boolean;
+  persona: PersonaKey;
+  onPersonaChange: (key: PersonaKey) => void;
 };
 
 /**
  * Flood Watch PublicHeader layout adapted for PropInsight:
- * Desktop (sm+): brand | Search max-w-md [locate] | Live | modes | theme
- * Phone: brand … modes theme · search+locate on second row only
+ * Desktop (sm+): brand | Search max-w-md [locate] | Live | persona tabs | theme
+ * Phone: brand … personas theme · search+locate on second row only
  */
-export function AppHeader({ theme, onToggleTheme, onSelectPlace, locating }: Props) {
+export function AppHeader({
+  theme,
+  onToggleTheme,
+  onSelectPlace,
+  locating,
+  persona,
+  onPersonaChange,
+}: Props) {
   const dark = theme === "dark";
   const [geoBusy, setGeoBusy] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
@@ -81,7 +91,6 @@ export function AppHeader({ theme, onToggleTheme, onSelectPlace, locating }: Pro
       />
 
       <div className="relative flex w-full flex-col gap-2 px-3 py-2.5 sm:gap-0 sm:px-4 sm:py-2.5">
-        {/* Row 1: brand + desktop search + modes + theme */}
         <div className="flex w-full items-center gap-2 sm:gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none sm:shrink-0 sm:gap-3">
             <div
@@ -136,36 +145,38 @@ export function AppHeader({ theme, onToggleTheme, onSelectPlace, locating }: Pro
 
             <div
               className={clsx(
-                "inline-flex rounded-lg border p-0.5",
+                "inline-flex max-w-[min(100vw-8rem,28rem)] overflow-x-auto rounded-lg border p-0.5",
                 dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-slate-100",
               )}
+              role="tablist"
+              aria-label="Target user"
             >
-              <span
-                className={clsx(
-                  "rounded-md px-2 py-1.5 text-[11px] font-semibold sm:px-2.5 sm:py-1",
-                  dark ? "bg-sky-600 text-white" : "bg-sky-700 text-white",
-                )}
-              >
-                Analyse
-              </span>
-              <span
-                className={clsx(
-                  "inline-flex cursor-not-allowed flex-col items-center rounded-md px-2 py-1.5 text-[11px] font-semibold leading-tight opacity-45 sm:flex-row sm:gap-1 sm:px-2.5 sm:py-1",
-                  dark ? "text-gray-500" : "text-slate-400",
-                )}
-              >
-                <span>Compare</span>
-                <span className="text-[9px] font-medium uppercase tracking-wide opacity-80">Soon</span>
-              </span>
-              <span
-                className={clsx(
-                  "inline-flex cursor-not-allowed flex-col items-center rounded-md px-2 py-1.5 text-[11px] font-semibold leading-tight opacity-45 sm:flex-row sm:gap-1 sm:px-2.5 sm:py-1",
-                  dark ? "text-gray-500" : "text-slate-400",
-                )}
-              >
-                <span>Report</span>
-                <span className="text-[9px] font-medium uppercase tracking-wide opacity-80">Soon</span>
-              </span>
+              {PERSONAS.map((p) => {
+                const active = persona === p.key;
+                return (
+                  <button
+                    key={p.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    title={p.blurb}
+                    onClick={() => onPersonaChange(p.key)}
+                    className={clsx(
+                      "shrink-0 rounded-md px-2 py-1.5 text-[11px] font-semibold transition sm:px-2.5 sm:py-1",
+                      active
+                        ? dark
+                          ? "bg-sky-600 text-white"
+                          : "bg-sky-700 text-white"
+                        : dark
+                          ? "text-gray-400 hover:text-white"
+                          : "text-slate-500 hover:text-slate-900",
+                    )}
+                  >
+                    <span className="sm:hidden">{p.shortLabel}</span>
+                    <span className="hidden sm:inline">{p.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             <button
@@ -185,7 +196,6 @@ export function AppHeader({ theme, onToggleTheme, onSelectPlace, locating }: Pro
           </div>
         </div>
 
-        {/* Row 2: phone-only search + locate */}
         <div className="flex items-center gap-2 sm:hidden">
           <div className="min-w-0 flex-1">
             <SearchBar

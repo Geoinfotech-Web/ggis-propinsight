@@ -26,7 +26,11 @@ def test_feasibility_renormalises_when_some_missing():
 
 
 def test_steep_slope_lowers_score():
-    good = score_feasibility(slope_deg=2.0, flood_normalised=1.0, utility_distance_m=100.0, twi=4.0)
-    steep = score_feasibility(slope_deg=25.0, flood_normalised=1.0, utility_distance_m=100.0, twi=4.0)
+    good = score_feasibility(
+        slope_deg=2.0, flood_normalised=1.0, utility_distance_m=100.0, twi=4.0
+    )
+    steep = score_feasibility(
+        slope_deg=25.0, flood_normalised=1.0, utility_distance_m=100.0, twi=4.0
+    )
     assert steep.score is not None and good.score is not None
     assert steep.score < good.score

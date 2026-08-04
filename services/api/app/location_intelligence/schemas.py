@@ -25,7 +25,13 @@ class GeoJSONGeometry(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     geometry: GeoJSONGeometry
-    profile: str = Field(default="fct-v1", description="Scoring profile key")
+    profile: str = Field(
+        default="home_buyer",
+        description=(
+            "Persona scoring profile: home_buyer|investor|tenant|developer "
+            "(fct-v1 -> home_buyer)"
+        ),
+    )
 
 
 class DomainResult(BaseModel):
@@ -42,9 +48,18 @@ class LocationInfo(BaseModel):
     geohash8: str | None = None
 
 
+class PersonaInfo(BaseModel):
+    key: str
+    label: str
+    blurb: str
+
+
 class ScorecardResponse(BaseModel):
     location: LocationInfo
     domains: dict[str, DomainResult]
     layer_versions: dict[str, str] = Field(default_factory=dict)
     scoring_profile: str
     cached: bool = False
+    persona: PersonaInfo | None = None
+    fit_score: float | None = None
+    domain_priority: list[str] = Field(default_factory=list)

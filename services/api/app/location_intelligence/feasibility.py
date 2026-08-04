@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.scoring.engine import Indicator, DomainScore, linear_decay, score_domain
+from app.scoring.engine import DomainScore, Indicator, linear_decay, score_domain
 
 WEIGHTS: dict[str, float] = {
     "slope": 0.30,

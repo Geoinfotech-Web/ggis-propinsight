@@ -116,7 +116,9 @@ class GGISFloodClient:
             last_event=last_event,
         )
 
-    async def history(self, lon: float | None = None, lat: float | None = None) -> list[dict[str, Any]]:
+    async def history(
+        self, lon: float | None = None, lat: float | None = None
+    ) -> list[dict[str, Any]]:
         """Observed inundation events near a point (Phase 1: global list from GGIS)."""
         path = "/v1/flood/history"
         params: dict[str, float] = {}

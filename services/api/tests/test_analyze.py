@@ -49,7 +49,7 @@ def _req() -> AnalyzeRequest:
 
 
 @pytest.mark.asyncio
-async def test_analyze_returns_all_eight_domains():
+async def test_analyze_returns_persona_domains_without_feasibility_for_buyer():
     ok = FloodResult(
         status=FloodStatus.OK, risk_class="High", risk_score=0.78, normalised=0.2,
         factors={"elevation_m": 342.1}, model_version="ggis-fw-2.3",
@@ -58,8 +58,10 @@ async def test_analyze_returns_all_eight_domains():
     res = await analyze(_req(), flood=_StubFlood(ok))  # type: ignore[arg-type]
     assert set(res.domains) == {
         "flood", "security", "amenities", "accessibility",
-        "tenure", "market", "livability", "feasibility",
+        "tenure", "market", "livability",
     }
+    assert "feasibility" not in res.domains
+    assert "feasibility" not in res.domain_priority
     assert res.domains["flood"].score == 20.0  # 100 * 0.2
     assert res.domains["flood"].status == "ok"
     assert res.layer_versions["hazard"] == "ggis-fw-2.3"
@@ -79,7 +81,10 @@ async def test_flood_degrades_gracefully_when_ggis_unavailable():
     assert flood.score is None
     assert "unavailable" in (flood.note or "").lower()
     # The scorecard as a whole still returns.
-    assert res.scoring_profile == "fct-v1"
+    assert res.scoring_profile == "home_buyer"
+    assert res.persona is not None
+    assert res.persona.key == "home_buyer"
+    assert res.domain_priority[0] == "flood"
 
 
 @pytest.mark.asyncio
@@ -138,3 +143,54 @@ async def test_layer_bump_changes_key_and_forces_recompute():
     # A layer bump changes the versions -> new cache key -> recompute.
     await analyze(_req(), flood=flood, versions={"poi": "2026.07.2"}, cache=cache)  # type: ignore[arg-type]
     assert flood.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_analyze_investor_profile_sets_persona_and_priority():
+    req = AnalyzeRequest(
+        geometry=GeoJSONGeometry(type="Point", coordinates=[7.3986, 8.9634]),
+        profile="investor",
+    )
+    res = await analyze(req, flood=_StubFlood(_ok_flood()))  # type: ignore[arg-type]
+    assert res.scoring_profile == "investor"
+    assert res.persona is not None
+    assert res.persona.key == "investor"
+    assert res.persona.label == "Investor"
+    assert res.domain_priority[0] == "market"
+    assert "feasibility" in res.domains
+    assert "feasibility" in res.domain_priority
+    assert res.fit_score is not None  # at least flood is scored
+
+
+@pytest.mark.asyncio
+async def test_tenant_excludes_feasibility_from_report():
+    req = AnalyzeRequest(
+        geometry=GeoJSONGeometry(type="Point", coordinates=[7.3986, 8.9634]),
+        profile="tenant",
+    )
+    res = await analyze(req, flood=_StubFlood(_ok_flood()))  # type: ignore[arg-type]
+    assert "feasibility" not in res.domains
+    assert "feasibility" not in res.domain_priority
+
+
+@pytest.mark.asyncio
+async def test_developer_includes_feasibility_leading_priority():
+    req = AnalyzeRequest(
+        geometry=GeoJSONGeometry(type="Point", coordinates=[7.3986, 8.9634]),
+        profile="developer",
+    )
+    res = await analyze(req, flood=_StubFlood(_ok_flood()))  # type: ignore[arg-type]
+    assert "feasibility" in res.domains
+    assert res.domain_priority[0] == "feasibility"
+
+
+@pytest.mark.asyncio
+async def test_legacy_fct_v1_profile_resolves_to_home_buyer():
+    req = AnalyzeRequest(
+        geometry=GeoJSONGeometry(type="Point", coordinates=[7.3986, 8.9634]),
+        profile="fct-v1",
+    )
+    res = await analyze(req, flood=_StubFlood(_ok_flood()))  # type: ignore[arg-type]
+    assert res.scoring_profile == "home_buyer"
+    assert res.persona is not None
+    assert res.persona.key == "home_buyer"

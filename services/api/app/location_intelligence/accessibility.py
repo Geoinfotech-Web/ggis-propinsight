@@ -10,7 +10,7 @@ import math
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.scoring.engine import Indicator, DomainScore, linear_decay, score_domain
+from app.scoring.engine import DomainScore, Indicator, linear_decay, score_domain
 
 WEIGHTS: dict[str, float] = {
     "road_distance": 0.30,
@@ -62,7 +62,11 @@ def score_accessibility(
     indicators: list[Indicator] = [
         Indicator(
             key="road_distance",
-            value=None if road_distance_m is None else linear_decay(road_distance_m, ROAD_D_MIN_M, ROAD_D_MAX_M),
+            value=(
+                None
+                if road_distance_m is None
+                else linear_decay(road_distance_m, ROAD_D_MIN_M, ROAD_D_MAX_M)
+            ),
             weight=WEIGHTS["road_distance"],
             raw=None if road_distance_m is None else {"distance_m": round(road_distance_m, 1)},
         ),

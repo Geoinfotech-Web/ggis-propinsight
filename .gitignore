@@ -33,6 +33,7 @@ htmlcov/
 node_modules/
 apps/web/dist/
 apps/web/.vite/
+*.tsbuildinfo
 *.local
 
 # ---- Data / geospatial artefacts (never commit large data) ----
@@ -49,6 +50,7 @@ data/
 # ---- Editor / OS ----
 .idea/
 .vscode/
+.cursor/
 .DS_Store
 Thumbs.db
 

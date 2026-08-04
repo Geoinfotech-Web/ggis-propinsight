@@ -1,6 +1,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { DOMAIN_ORDER, type DomainResult, type Scorecard } from "../api";
+import { getPersona, type PersonaKey } from "../lib/personas";
 import type { Theme } from "../theme";
 
 const DOMAIN_LABELS: Record<(typeof DOMAIN_ORDER)[number], string> = {
@@ -145,7 +146,10 @@ type NearbyPoi = {
 
 const NEARBY_ORDER = ["school", "hospital", "market", "bank"] as const;
 
-function parseNearby(evidence: Record<string, unknown>): NearbyPoi[] {
+function parseNearby(
+  evidence: Record<string, unknown>,
+  amenityOrder: readonly string[] = NEARBY_ORDER,
+): NearbyPoi[] {
   const raw = evidence.nearby;
   if (!Array.isArray(raw)) return [];
   return raw
@@ -159,8 +163,8 @@ function parseNearby(evidence: Record<string, unknown>): NearbyPoi[] {
     })
     .filter((x): x is NearbyPoi => x !== null)
     .sort((a, b) => {
-      const ai = NEARBY_ORDER.indexOf(a.category as (typeof NEARBY_ORDER)[number]);
-      const bi = NEARBY_ORDER.indexOf(b.category as (typeof NEARBY_ORDER)[number]);
+      const ai = amenityOrder.indexOf(a.category);
+      const bi = amenityOrder.indexOf(b.category);
       if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
       return a.distance_m - b.distance_m;
     });
@@ -196,11 +200,20 @@ type Props = {
   loading: boolean;
   error: string | null;
   placeLabel?: string | null;
+  persona?: PersonaKey;
   onClose?: () => void;
   onViewNearbyList?: () => void;
 };
 
 const PREVIEW_PER_CATEGORY = 2;
+
+function domainLabel(key: string): string {
+  return DOMAIN_LABELS[key as (typeof DOMAIN_ORDER)[number]] ?? key.replace(/_/g, " ");
+}
+
+function domainKicker(key: string): string {
+  return DOMAIN_KICKERS[key as (typeof DOMAIN_ORDER)[number]] ?? "Location intelligence";
+}
 
 export function ScorecardConsole({
   theme,
@@ -208,10 +221,12 @@ export function ScorecardConsole({
   loading,
   error,
   placeLabel,
+  persona = "home_buyer",
   onClose,
   onViewNearbyList,
 }: Props) {
   const dark = theme === "dark";
+  const personaDef = getPersona(persona);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     amenities: true,
     accessibility: true,
@@ -221,6 +236,16 @@ export function ScorecardConsole({
 
   const toggle = (id: string) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const orderedDomains =
+    card?.domain_priority && card.domain_priority.length > 0
+      ? [...card.domain_priority]
+      : card
+        ? Object.keys(card.domains)
+        : [...DOMAIN_ORDER];
+
+  const topDomains = new Set(orderedDomains.slice(0, 3));
+  const personaLabel = card?.persona?.label ?? personaDef.label;
 
   return (
     <aside
@@ -239,7 +264,7 @@ export function ScorecardConsole({
           <p className="app-kicker">Location report</p>
           <h2 className="font-display text-xl font-semibold tracking-tight">Scorecard</h2>
           <p className={clsx("mt-0.5 text-[11px] leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
-            Eight-domain intelligence for property decisions
+            {card?.persona?.blurb ?? personaDef.blurb}
           </p>
         </div>
         {onClose && (
@@ -286,6 +311,33 @@ export function ScorecardConsole({
                   {placeLabel}
                 </p>
               )}
+              <div className="mb-2 flex items-end justify-between gap-3">
+                <div>
+                  <p
+                    className={clsx(
+                      "text-[10px] font-semibold uppercase tracking-[0.14em]",
+                      dark ? "text-sky-400" : "text-sky-700",
+                    )}
+                  >
+                    Fit for {personaLabel}
+                  </p>
+                  <p className="font-display text-3xl font-semibold tabular-nums leading-none">
+                    {card.fit_score != null ? card.fit_score.toFixed(0) : "—"}
+                  </p>
+                </div>
+                <div
+                  className="h-2 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-gray-800"
+                  aria-hidden
+                >
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${card.fit_score != null ? Math.max(4, card.fit_score) : 4}%`,
+                      backgroundColor: scoreBarColor(card.fit_score ?? null, "ok"),
+                    }}
+                  />
+                </div>
+              </div>
               <div className="tabular-nums">
                 geohash <span className="font-semibold">{card.location.geohash8}</span>
                 {card.location.district && <> · {card.location.district}</>}
@@ -302,12 +354,13 @@ export function ScorecardConsole({
             </div>
 
             <div className="space-y-2">
-              {DOMAIN_ORDER.map((d) => {
+              {orderedDomains.map((d) => {
                 const r = card.domains[d];
                 if (!r) return null;
                 const isOpen = expanded[d] ?? false;
                 const rows = evidenceRows(d, r.evidence ?? {});
                 const bar = scoreBarColor(r.score, r.status);
+                const highPriority = topDomains.has(d);
 
                 return (
                   <section
@@ -330,11 +383,11 @@ export function ScorecardConsole({
                             dark ? "text-sky-400" : "text-sky-700",
                           )}
                         >
-                          {DOMAIN_KICKERS[d]}
+                          {domainKicker(d)}
                         </p>
-                        <div className="mt-0.5 flex items-center gap-2">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2">
                           <h3 className="font-display text-base font-semibold tracking-tight">
-                            {DOMAIN_LABELS[d]}
+                            {domainLabel(d)}
                           </h3>
                           <span
                             className={clsx(
@@ -344,6 +397,18 @@ export function ScorecardConsole({
                           >
                             {r.status}
                           </span>
+                          {highPriority && (
+                            <span
+                              className={clsx(
+                                "rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+                                dark
+                                  ? "border-sky-700/50 bg-sky-950/40 text-sky-300"
+                                  : "border-sky-200 bg-sky-50 text-sky-800",
+                              )}
+                            >
+                              High priority · {personaLabel}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-gray-800">
                           <div
@@ -407,11 +472,13 @@ export function ScorecardConsole({
                         )}
 
                         {d === "amenities" && (() => {
-                          const nearby = parseNearby(r.evidence ?? {});
-                          const groups = NEARBY_ORDER.map((cat) => ({
-                            cat,
-                            items: nearby.filter((p) => p.category === cat),
-                          })).filter((g) => g.items.length > 0);
+                          const nearby = parseNearby(r.evidence ?? {}, personaDef.amenityOrder);
+                          const groups = personaDef.amenityOrder
+                            .map((cat) => ({
+                              cat,
+                              items: nearby.filter((p) => p.category === cat),
+                            }))
+                            .filter((g) => g.items.length > 0);
                           const hasMore = groups.some((g) => g.items.length > PREVIEW_PER_CATEGORY)
                             || nearby.length > PREVIEW_PER_CATEGORY * 2;
                           return (

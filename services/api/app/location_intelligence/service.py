@@ -31,6 +31,13 @@ from app.location_intelligence.feasibility import (
     nearest_utility_distance_m,
     score_feasibility,
 )
+from app.location_intelligence.personas import (
+    domain_priority,
+    filter_domains_for_persona,
+    fit_score,
+    persona_public,
+    resolve_persona_key,
+)
 from app.location_intelligence.readiness import (
     LATER_DOMAINS,
     TIER1_REQUIRED_LAYERS,
@@ -41,6 +48,7 @@ from app.location_intelligence.schemas import (
     AnalyzeRequest,
     DomainResult,
     LocationInfo,
+    PersonaInfo,
     ScorecardResponse,
 )
 from app.scoring.engine import DomainScore
@@ -201,10 +209,11 @@ async def analyze(
     lon, lat = _point_of(req)
     gh8 = _geohash8(lon, lat)
     versions = versions or {}
+    persona_key = resolve_persona_key(req.profile)
 
     cache_key = None
     if cache is not None:
-        cache_key = cache.make_key(req.profile, gh8, versions)
+        cache_key = cache.make_key(persona_key, gh8, versions)
         hit = await cache.get(cache_key)
         if hit is not None:
             hit["cached"] = True
@@ -250,12 +259,18 @@ async def analyze(
     for d in LATER_DOMAINS:
         domains[d] = _pending(d, versions)
 
+    priority = domain_priority(persona_key)
+    # Drop domains not in this persona's Location Report (e.g. feasibility for buyers).
+    report_domains = filter_domains_for_persona(domains, persona_key)
     response = ScorecardResponse(
         location=LocationInfo(geohash8=gh8),
-        domains=domains,
+        domains=report_domains,
         layer_versions=layer_versions,
-        scoring_profile=req.profile,
+        scoring_profile=persona_key,
         cached=False,
+        persona=PersonaInfo(**persona_public(persona_key)),
+        fit_score=fit_score(report_domains, persona_key),
+        domain_priority=priority,
     )
 
     if cache is not None and cache_key is not None:

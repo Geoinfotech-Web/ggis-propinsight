@@ -21,6 +21,7 @@ import {
   nearbyFromScorecard,
   nearbyToGeoJSON,
 } from "./lib/amenitiesMap";
+import { loadPersona, savePersona, type PersonaKey } from "./lib/personas";
 import { applyTheme, loadTheme, type Theme } from "./theme";
 
 const FCT_CENTER: [number, number] = [7.4913, 9.0579];
@@ -110,10 +111,12 @@ export default function App() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const basemapIdRef = useRef<BasemapId>(DEFAULT_BASEMAP_ID);
+  const lastPointRef = useRef<{ lon: number; lat: number; label?: string } | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") return "light";
     return loadTheme();
   });
+  const [persona, setPersona] = useState<PersonaKey>(() => loadPersona());
   const [basemapId, setBasemapId] = useState<BasemapId>(DEFAULT_BASEMAP_ID);
   const [layers, setLayers] = useState<OverlayLayer[]>(DEFAULT_LAYERS);
   const [card, setCard] = useState<Scorecard | null>(null);
@@ -134,7 +137,7 @@ export default function App() {
   );
 
   const runAnalyse = useCallback(
-    async (lng: number, lat: number, label?: string) => {
+    async (lng: number, lat: number, label?: string, profile: PersonaKey = persona) => {
       const map = mapRef.current;
       if (!map) return;
 
@@ -148,20 +151,30 @@ export default function App() {
         markerRef.current = null;
       }
 
+      lastPointRef.current = { lon: lng, lat, label };
       setPlaceLabel(label ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
       setSheetOpen(true);
       setLoading(true);
       setError(null);
       try {
-        setCard(await analyzePoint(lng, lat));
+        setCard(await analyzePoint(lng, lat, profile));
       } catch (err) {
         setError((err as Error).message);
       } finally {
         setLoading(false);
       }
     },
-    [layerEnabled],
+    [layerEnabled, persona],
   );
+
+  const onPersonaChange = (key: PersonaKey) => {
+    setPersona(key);
+    savePersona(key);
+    const last = lastPointRef.current;
+    if (last) {
+      void runAnalyse(last.lon, last.lat, last.label, key);
+    }
+  };
 
   useEffect(() => {
     const container = mapContainer.current;
@@ -313,6 +326,8 @@ export default function App() {
         onToggleTheme={toggleTheme}
         onSelectPlace={flyAndAnalyse}
         locating={loading}
+        persona={persona}
+        onPersonaChange={onPersonaChange}
       />
 
       <div className="relative flex min-h-0 flex-1 flex-row">
@@ -323,6 +338,7 @@ export default function App() {
             loading={loading}
             error={error}
             placeLabel={placeLabel}
+            persona={persona}
             onViewNearbyList={() => setAmenitiesListOpen(true)}
           />
         </div>
@@ -425,6 +441,7 @@ export default function App() {
               loading={loading}
               error={error}
               placeLabel={placeLabel}
+              persona={persona}
               onClose={() => setSheetOpen(false)}
               onViewNearbyList={() => setAmenitiesListOpen(true)}
             />

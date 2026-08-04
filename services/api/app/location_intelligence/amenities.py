@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.scoring.engine import Indicator, DomainScore, linear_decay, score_domain
+from app.scoring.engine import DomainScore, Indicator, linear_decay, score_domain
 
 # Mirrors migration 0001 fct-v1 amenities weights.
 AMENITY_WEIGHTS: dict[str, float] = {

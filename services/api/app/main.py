@@ -6,10 +6,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import __version__
