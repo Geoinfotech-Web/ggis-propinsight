@@ -533,62 +533,52 @@ export function ScorecardConsole({
                     </p>
                   )}
                   <p className="text-[12px] font-medium leading-relaxed">{card.summary}</p>
-                </div>
-              )}
-              {card.highlights && card.highlights.length > 0 && (
-                <div className="mb-2">
-                  <p
-                    className={clsx(
-                      "mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
-                      dark ? "text-gray-400" : "text-slate-500",
-                    )}
-                  >
-                    Report highlights
-                  </p>
-                  <div className="space-y-1.5">
-                    {card.highlights.slice(0, 3).map((highlight) => (
-                      <div
-                        key={highlight.domain}
-                        className={clsx(
-                          "flex gap-2 rounded-md border px-2.5 py-2",
-                          highlight.tone === "positive"
-                            ? dark
-                              ? "border-teal-800/60 bg-teal-950/20"
-                              : "border-teal-200 bg-teal-50/70"
-                            : highlight.tone === "caution"
-                              ? dark
-                                ? "border-amber-800/60 bg-amber-950/20"
-                                : "border-amber-200 bg-amber-50/70"
-                              : dark
-                                ? "border-gray-700 bg-gray-950/30"
-                                : "border-slate-200 bg-white",
-                        )}
-                      >
-                        <span
-                          className={clsx(
-                            "mt-1 h-2 w-2 shrink-0 rounded-full",
-                            highlight.tone === "positive"
-                              ? "bg-teal-500"
-                              : highlight.tone === "caution"
-                                ? "bg-amber-500"
-                                : "bg-slate-400",
-                          )}
-                          aria-hidden
-                        />
-                        <div>
-                          <p className="text-[11px] font-semibold">{highlight.title}</p>
-                          <p
+                  {isConsumerReport && card.highlights && card.highlights.length > 0 && (
+                    <div
+                      className={clsx(
+                        "mt-2 space-y-2 border-t pt-2",
+                        dark ? "border-teal-800/60" : "border-teal-200",
+                      )}
+                    >
+                      {card.highlights.slice(0, 3).map((highlight) => (
+                        <div key={highlight.domain} className="flex gap-2">
+                          <span
                             className={clsx(
-                              "text-[10px] leading-relaxed",
-                              dark ? "text-gray-400" : "text-slate-600",
+                              "mt-1 h-2 w-2 shrink-0 rounded-full",
+                              highlight.tone === "positive"
+                                ? "bg-teal-500"
+                                : highlight.tone === "caution"
+                                  ? "bg-amber-500"
+                                  : "bg-slate-400",
                             )}
-                          >
-                            {highlight.text}
-                          </p>
+                            aria-hidden
+                          />
+                          <div>
+                            <p
+                              className={clsx(
+                                "text-[9px] font-semibold uppercase tracking-[0.1em]",
+                                highlight.tone === "positive"
+                                  ? dark ? "text-teal-300" : "text-teal-700"
+                                  : highlight.tone === "caution"
+                                    ? dark ? "text-amber-300" : "text-amber-700"
+                                    : dark ? "text-gray-400" : "text-slate-500",
+                              )}
+                            >
+                              {highlight.tone === "positive"
+                                ? "Why it could suit you"
+                                : highlight.tone === "caution"
+                                  ? "Why it may not suit you"
+                                  : "Worth checking"}
+                            </p>
+                            <p className="text-[10px] leading-relaxed">
+                              <span className="font-semibold">{highlight.title}:</span>{" "}
+                              {highlight.text}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {showPlanningContext && (

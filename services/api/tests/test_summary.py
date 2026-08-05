@@ -16,12 +16,11 @@ def test_quality_bands():
     assert quality_band(None) is None
 
 
-def test_summary_names_strength_and_concern():
+def test_consumer_summary_gives_verdict_and_introduces_reasons():
     domains = {"amenities": _D(92), "security": _D(48), "flood": _D(80)}
     text = build_summary("home_buyer", "Home Buyer", 88.0, domains)
     assert "strong choice for buying a home" in text.lower()
-    assert "shops, schools or clinics" in text.lower()
-    assert "ask residents about safety" in text.lower()
+    assert "what supports the result" in text.lower()
 
 
 def test_summary_no_concern_when_all_strong():
@@ -40,8 +39,7 @@ def test_tenant_summary_uses_renter_language():
     domains = {"accessibility": _D(88), "market": _D(35)}
     text = build_summary("tenant", "Tenant", 61.0, domains)
     assert "good option for renting" in text.lower()
-    assert "getting around" in text.lower()
-    assert "yearly rent and service charges" in text.lower()
+    assert "what you should check" in text.lower()
 
 
 def test_highlights_include_strength_concern_and_priority():

@@ -35,40 +35,6 @@ CONSUMER_OPENINGS: dict[str, dict[str, str]] = {
     },
 }
 
-CONSUMER_STRENGTHS: dict[str, str] = {
-    "flood": "The available information suggests lower flood concern",
-    "security": "The available safety indicators are encouraging",
-    "amenities": "Useful everyday places such as shops, schools or clinics are a plus",
-    "accessibility": "Getting around from here should be relatively convenient",
-    "market": "Nearby price information is one of the clearer positives",
-    "livability": "The area looks more comfortable for everyday living",
-}
-
-CONSUMER_WATCH: dict[str, dict[str, str]] = {
-    "home_buyer": {
-        "flood": "Visit after heavy rain and ask neighbours about past flooding before you buy",
-        "security": (
-            "Ask residents about safety, especially at the times your household will travel"
-        ),
-        "amenities": (
-            "Check the actual trip to the schools, clinics and shops your household would use"
-        ),
-        "accessibility": "Test your usual commute at busy times and during the rainy season",
-        "market": "Compare several recent prices before making an offer",
-        "livability": "Spend time here to judge noise, services and neighbourhood comfort",
-    },
-    "tenant": {
-        "flood": (
-            "Visit after heavy rain and ask current residents whether water enters roads or homes"
-        ),
-        "security": "Ask residents about safety when leaving early or returning late",
-        "amenities": "Check the real trip to the shops, clinics and other places you use often",
-        "accessibility": "Try your daily commute at peak time before paying a deposit",
-        "market": "Compare the full yearly rent and service charges with similar homes nearby",
-        "livability": "Visit in the evening to check noise, power, water and neighbourhood comfort",
-    },
-}
-
 HIGHLIGHT_TITLES: dict[str, str] = {
     "flood": "Flooding",
     "security": "Safety",
@@ -184,21 +150,7 @@ def _consumer_summary(
     opening = CONSUMER_OPENINGS[persona_key][_consumer_fit_band(fit)]
     if not scored:
         return f"{opening}. More local information is needed before relying on this report."
-
-    best = max(scored, key=lambda item: item[1])
-    worst = min(scored, key=lambda item: item[1])
-    sentences = [f"{opening}."]
-
-    strength = CONSUMER_STRENGTHS.get(best[0])
-    if strength:
-        sentences.append(f"{strength}.")
-
-    if worst[0] != best[0] and worst[1] < STRONG:
-        watch = CONSUMER_WATCH[persona_key].get(worst[0])
-        if watch:
-            sentences.append(f"{watch}.")
-
-    return " ".join(sentences)
+    return f"{opening}. Here is what supports the result and what you should check."
 
 
 def build_summary(
