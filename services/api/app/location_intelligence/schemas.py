@@ -55,17 +55,43 @@ class LandUseInfo(BaseModel):
     advisory: str
 
 
+class LandCoverInfo(BaseModel):
+    class_value: int
+    category: str
+    label: str
+    designation: Literal["observed_land_cover"]
+    source: str
+    source_url: str | None = None
+    period_start: str | None = None
+    period_end: str | None = None
+    resolution_m: int
+    advisory: str
+
+
 class LocationInfo(BaseModel):
     district: str | None = None
+    ward: str | None = None
+    area_council: str | None = None
     state: str | None = None
     geohash8: str | None = None
     land_use: LandUseInfo | None = None
+    land_cover: LandCoverInfo | None = None
+    planning_status: Literal[
+        "official", "mapped_reference", "observed_cover_only", "unmapped"
+    ] = "unmapped"
 
 
 class PersonaInfo(BaseModel):
     key: str
     label: str
     blurb: str
+
+
+class ScorecardHighlight(BaseModel):
+    domain: str
+    title: str
+    text: str
+    tone: Literal["positive", "neutral", "caution"]
 
 
 class ScorecardResponse(BaseModel):
@@ -77,4 +103,5 @@ class ScorecardResponse(BaseModel):
     persona: PersonaInfo | None = None
     fit_score: float | None = None
     summary: str | None = None
+    highlights: list[ScorecardHighlight] = Field(default_factory=list)
     domain_priority: list[str] = Field(default_factory=list)

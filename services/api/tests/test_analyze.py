@@ -54,7 +54,7 @@ def _req() -> AnalyzeRequest:
 
 
 @pytest.mark.asyncio
-async def test_analyze_returns_persona_domains_without_feasibility_for_buyer():
+async def test_analyze_returns_consumer_domains_for_buyer():
     ok = FloodResult(
         status=FloodStatus.OK, risk_class="High", risk_score=0.78, normalised=0.2,
         factors={"elevation_m": 342.1}, model_version="ggis-fw-2.3",
@@ -63,10 +63,14 @@ async def test_analyze_returns_persona_domains_without_feasibility_for_buyer():
     res = await analyze(_req(), flood=_StubFlood(ok))  # type: ignore[arg-type]
     assert set(res.domains) == {
         "flood", "security", "amenities", "accessibility",
-        "tenure", "market", "livability",
+        "market", "livability",
     }
     assert "feasibility" not in res.domains
     assert "feasibility" not in res.domain_priority
+    assert "tenure" not in res.domains
+    assert "tenure" not in res.domain_priority
+    assert res.summary is not None
+    assert "buying a home" in res.summary.lower()
     assert res.domains["flood"].score == 20.0  # 100 * 0.2
     assert res.domains["flood"].status == "ok"
     assert res.layer_versions["hazard"] == "ggis-fw-2.3"
@@ -195,7 +199,7 @@ async def test_analyze_investor_profile_sets_persona_and_priority():
 
 
 @pytest.mark.asyncio
-async def test_tenant_excludes_feasibility_from_report():
+async def test_tenant_excludes_planning_and_feasibility_from_report():
     req = AnalyzeRequest(
         geometry=GeoJSONGeometry(type="Point", coordinates=[7.3986, 8.9634]),
         profile="tenant",
@@ -203,6 +207,10 @@ async def test_tenant_excludes_feasibility_from_report():
     res = await analyze(req, flood=_StubFlood(_ok_flood()))  # type: ignore[arg-type]
     assert "feasibility" not in res.domains
     assert "feasibility" not in res.domain_priority
+    assert "tenure" not in res.domains
+    assert "tenure" not in res.domain_priority
+    assert res.summary is not None
+    assert "rent" in res.summary.lower()
 
 
 @pytest.mark.asyncio

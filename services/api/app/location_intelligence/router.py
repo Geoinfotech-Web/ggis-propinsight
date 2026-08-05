@@ -6,12 +6,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache import ScorecardCache, get_cache
 from app.db import get_session
+from app.location_intelligence.land_cover import land_cover_meta, land_cover_tile
 from app.location_intelligence.land_use import land_use_feature_collection
 from app.location_intelligence.registry import current_layer_versions
 from app.location_intelligence.schemas import AnalyzeRequest, ScorecardResponse
 from app.location_intelligence.service import analyze
 
 router = APIRouter(prefix="/v1/locations", tags=["locations"])
+
+
+@router.get("/land-cover/meta")
+async def observed_land_cover_meta(
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await land_cover_meta(session)
+
+
+@router.get("/land-cover/tiles/{z}/{x}/{y}.png")
+async def observed_land_cover_tile(
+    z: int,
+    x: int,
+    y: int,
+    session: AsyncSession = Depends(get_session),
+):
+    return await land_cover_tile(session, z, x, y)
 
 
 @router.get("/land-use")

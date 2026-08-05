@@ -20,6 +20,8 @@ LAYERS = (
     "hazard",
     "planning",
     "land_use",
+    "land_cover",
+    "administrative_boundaries",
     "market",
     "security",
 )

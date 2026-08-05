@@ -52,6 +52,7 @@ services:
       - "8001:8000"
     volumes:
       - ./services/api:/app
+      - geodata:/data:ro
     depends_on:
       db:
         condition: service_healthy
@@ -66,8 +67,9 @@ services:
   web:
     build: ./apps/web
     environment:
-      # In the compose network the API is reachable as `api:8000`.
-      API_PROXY_TARGET: http://api:8000
+      # Docker Desktop's host gateway stays stable when the API container is
+      # rebuilt; using the published port avoids a stale internal DNS/socket.
+      API_PROXY_TARGET: http://host.docker.internal:8001
       VITE_USE_POLLING: "1"
     ports:
       - "5174:5174"

@@ -42,6 +42,25 @@ class District(Base):
     geom: Mapped[object] = mapped_column(Geometry("MULTIPOLYGON", srid=SRID))
 
 
+class Ward(Base):
+    """GRID3 operational ward used for local context and safe aggregation."""
+
+    __tablename__ = "wards"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    area_council: Mapped[str] = mapped_column(String(160), index=True)
+    state: Mapped[str] = mapped_column(String(80))
+    source: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    source_version: Mapped[str | None] = mapped_column(String(40))
+    geom: Mapped[object] = mapped_column(Geometry("MULTIPOLYGON", srid=SRID))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class Location(Base):
     """Saved/analysed areas of interest (points or drawn polygons)."""
 
@@ -127,6 +146,37 @@ class LandUseArea(Base):
     layer_version: Mapped[str] = mapped_column(String(20), index=True)
 
 
+class TerritoryBoundary(Base):
+    """Operational clipping boundary; provenance prevents it being treated as cadastral."""
+
+    __tablename__ = "territory_boundaries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    source: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    source_version: Mapped[str | None] = mapped_column(String(40))
+    geom: Mapped[object] = mapped_column(Geometry("MULTIPOLYGON", srid=SRID))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LandCoverRaster(Base):
+    """Published wall-to-wall observed cover COG used by point sampling and tiles."""
+
+    __tablename__ = "land_cover_rasters"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    raster_path: Mapped[str] = mapped_column(Text)
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    resolution_m: Mapped[int] = mapped_column(Integer)
+    classes: Mapped[dict] = mapped_column(JSONB)
+    layer_version: Mapped[str] = mapped_column(String(20), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ScoringProfile(Base):
     """Versioned weights & normalisation params per domain (TDD §4.4).
 
@@ -183,12 +233,13 @@ class Score(Base):
 
 
 class IncidentsAgg(Base):
-    """Security aggregates — district-level ONLY. No address-level crime mapping (TDD §8)."""
+    """Privacy-preserving district or ward security aggregates."""
 
     __tablename__ = "incidents_agg"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     district_id: Mapped[int] = mapped_column(ForeignKey("districts.id"), index=True)
+    ward_id: Mapped[int | None] = mapped_column(ForeignKey("wards.id"), index=True)
     period: Mapped[str] = mapped_column(String(10))  # e.g. "2026-Q2"
     category: Mapped[str] = mapped_column(String(40))
     count: Mapped[int] = mapped_column(Integer, default=0)
@@ -259,11 +310,13 @@ class ApiKey(Base):
 
 # --- Spatial & lookup indexes (GiST on every geom; partial index on poi.category) ---
 Index("ix_districts_geom", District.geom, postgresql_using="gist")
+Index("ix_wards_geom", Ward.geom, postgresql_using="gist")
 Index("ix_locations_geom", Location.geom, postgresql_using="gist")
 Index("ix_poi_geom", Poi.geom, postgresql_using="gist")
 Index("ix_roads_geom", Road.geom, postgresql_using="gist")
 Index("ix_dem_samples_geom", DemSample.geom, postgresql_using="gist")
 Index("ix_planning_geom", PlanningLayer.geom, postgresql_using="gist")
 Index("ix_land_use_geom", LandUseArea.geom, postgresql_using="gist")
+Index("ix_territory_boundaries_geom", TerritoryBoundary.geom, postgresql_using="gist")
 Index("ix_reviews_geom", Review.geom, postgresql_using="gist")
 Index("ix_market_geom", MarketSample.geom, postgresql_using="gist")

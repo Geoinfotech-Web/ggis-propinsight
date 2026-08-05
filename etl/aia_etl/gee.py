@@ -129,3 +129,31 @@ def export_s2_composite(
     )
     log.info("exporting Sentinel-2 composite %s..%s for %s", start, end, bbox)
     return _download(url, out_path)
+
+
+def export_dynamic_world_mode(
+    bbox: BBox,
+    out_path: Path,
+    start: str,
+    end: str,
+    scale: int = 30,
+) -> Path:
+    """Export the modal Dynamic World class for a period as one categorical raster."""
+    init_ee()
+    import ee
+
+    region = ee.Geometry.Rectangle(list(bbox))
+    labels = (
+        ee.ImageCollection("GOOGLE/DYNAMICWORLD/V1")
+        .filterBounds(region)
+        .filterDate(start, end)
+        .select("label")
+        .mode()
+        .rename("label")
+        .clip(region)
+    )
+    url = labels.getDownloadURL(
+        {"region": region, "scale": scale, "format": "GEO_TIFF", "crs": "EPSG:4326"}
+    )
+    log.info("exporting Dynamic World modal cover %s..%s for %s", start, end, bbox)
+    return _download(url, out_path)

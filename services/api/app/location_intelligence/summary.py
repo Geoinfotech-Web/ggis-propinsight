@@ -1,4 +1,4 @@
-"""Short, plain-language insight for the overall scorecard (public-facing)."""
+"""Persona-aware, plain-language insight for the overall scorecard."""
 from __future__ import annotations
 
 from typing import Any
@@ -16,6 +16,111 @@ DOMAIN_WORDS: dict[str, str] = {
     "market": "market value",
     "livability": "livability",
     "feasibility": "buildability",
+}
+
+CONSUMER_OPENINGS: dict[str, dict[str, str]] = {
+    "home_buyer": {
+        "strong": "This area looks like a strong choice for buying a home",
+        "solid": "This area looks like a good choice for buying a home",
+        "mixed": "This area may work for buying a home, but check the trade-offs",
+        "weak": "This area has concerns to resolve before buying a home",
+        "unknown": "There is not enough information yet to judge this area for buying a home",
+    },
+    "tenant": {
+        "strong": "This area looks like a strong option for renting",
+        "solid": "This area looks like a good option for renting",
+        "mixed": "This area may suit some renters, but check the trade-offs",
+        "weak": "This area may be difficult for comfortable day-to-day renting",
+        "unknown": "There is not enough information yet to judge this area for renting",
+    },
+}
+
+CONSUMER_STRENGTHS: dict[str, str] = {
+    "flood": "The available information suggests lower flood concern",
+    "security": "The available safety indicators are encouraging",
+    "amenities": "Useful everyday places such as shops, schools or clinics are a plus",
+    "accessibility": "Getting around from here should be relatively convenient",
+    "market": "Nearby price information is one of the clearer positives",
+    "livability": "The area looks more comfortable for everyday living",
+}
+
+CONSUMER_WATCH: dict[str, dict[str, str]] = {
+    "home_buyer": {
+        "flood": "Visit after heavy rain and ask neighbours about past flooding before you buy",
+        "security": (
+            "Ask residents about safety, especially at the times your household will travel"
+        ),
+        "amenities": (
+            "Check the actual trip to the schools, clinics and shops your household would use"
+        ),
+        "accessibility": "Test your usual commute at busy times and during the rainy season",
+        "market": "Compare several recent prices before making an offer",
+        "livability": "Spend time here to judge noise, services and neighbourhood comfort",
+    },
+    "tenant": {
+        "flood": (
+            "Visit after heavy rain and ask current residents whether water enters roads or homes"
+        ),
+        "security": "Ask residents about safety when leaving early or returning late",
+        "amenities": "Check the real trip to the shops, clinics and other places you use often",
+        "accessibility": "Try your daily commute at peak time before paying a deposit",
+        "market": "Compare the full yearly rent and service charges with similar homes nearby",
+        "livability": "Visit in the evening to check noise, power, water and neighbourhood comfort",
+    },
+}
+
+HIGHLIGHT_TITLES: dict[str, str] = {
+    "flood": "Flooding",
+    "security": "Safety",
+    "amenities": "Everyday essentials",
+    "accessibility": "Getting around",
+    "tenure": "Planning and land status",
+    "market": "Rent costs",
+    "livability": "Neighbourhood comfort",
+    "feasibility": "Buildability",
+}
+
+HIGHLIGHT_COPY: dict[str, dict[str, str]] = {
+    "flood": {
+        "positive": "Current information suggests lower flood concern here.",
+        "neutral": "Flood conditions are mixed; check the area after heavy rain.",
+        "caution": "Flooding needs closer checking before you decide.",
+    },
+    "security": {
+        "positive": "The available local safety indicators are encouraging.",
+        "neutral": "Safety looks mixed; ask residents about different times of day.",
+        "caution": "Safety needs closer local checks, especially at night.",
+    },
+    "amenities": {
+        "positive": "Useful shops, schools or clinics are relatively accessible.",
+        "neutral": "Some everyday services are nearby, but trips may vary.",
+        "caution": "Everyday services may require longer or less convenient trips.",
+    },
+    "accessibility": {
+        "positive": "Road access and key journeys look relatively convenient.",
+        "neutral": "Travel is workable, but test the commute at busy times.",
+        "caution": "Daily travel may be difficult or time-consuming.",
+    },
+    "tenure": {
+        "positive": "Available planning signals are comparatively favourable.",
+        "neutral": "Planning status needs normal document checks.",
+        "caution": "Planning or land-status questions need closer verification.",
+    },
+    "market": {
+        "positive": "Nearby price evidence is comparatively favourable.",
+        "neutral": "Prices are mixed; compare several similar properties.",
+        "caution": "Price or value needs careful comparison before committing.",
+    },
+    "livability": {
+        "positive": "The area looks more comfortable for everyday living.",
+        "neutral": "Neighbourhood comfort is mixed; visit at different times.",
+        "caution": "Check noise, utilities and neighbourhood comfort in person.",
+    },
+    "feasibility": {
+        "positive": "Available terrain and access signals look more buildable.",
+        "neutral": "Buildability is mixed and needs a site assessment.",
+        "caution": "Site conditions may add cost or development constraints.",
+    },
 }
 
 
@@ -41,28 +146,146 @@ def _fit_phrase(fit: float | None) -> str:
     return "A weak match"
 
 
+def _consumer_fit_band(fit: float | None) -> str:
+    if fit is None:
+        return "unknown"
+    if fit >= 75:
+        return "strong"
+    if fit >= 60:
+        return "solid"
+    if fit >= 40:
+        return "mixed"
+    return "weak"
+
+
 def _word(domain: str) -> str:
     return DOMAIN_WORDS.get(domain, domain)
 
 
-def build_summary(persona_label: str, fit: float | None, domains: dict[str, Any]) -> str:
-    """One-liner: fit verdict + top strength + main thing to watch."""
+def _persona_phrase(persona_label: str, fit: float | None) -> str:
+    article = "an" if persona_label[:1].lower() in "aeiou" else "a"
+    return f"{_fit_phrase(fit)} for {article} {persona_label}"
+
+
+def _scored_domains(domains: dict[str, Any]) -> list[tuple[str, float]]:
     scored: list[tuple[str, float]] = []
     for name, result in domains.items():
         score = result.score if hasattr(result, "score") else result.get("score")
         if score is not None:
             scored.append((name, float(score)))
+    return scored
 
-    phrase = f"{_fit_phrase(fit)} for a {persona_label}"
+
+def _consumer_summary(
+    persona_key: str,
+    fit: float | None,
+    scored: list[tuple[str, float]],
+) -> str:
+    opening = CONSUMER_OPENINGS[persona_key][_consumer_fit_band(fit)]
+    if not scored:
+        return f"{opening}. More local information is needed before relying on this report."
+
+    best = max(scored, key=lambda item: item[1])
+    worst = min(scored, key=lambda item: item[1])
+    sentences = [f"{opening}."]
+
+    strength = CONSUMER_STRENGTHS.get(best[0])
+    if strength:
+        sentences.append(f"{strength}.")
+
+    if worst[0] != best[0] and worst[1] < STRONG:
+        watch = CONSUMER_WATCH[persona_key].get(worst[0])
+        if watch:
+            sentences.append(f"{watch}.")
+
+    return " ".join(sentences)
+
+
+def build_summary(
+    persona_key: str,
+    persona_label: str,
+    fit: float | None,
+    domains: dict[str, Any],
+) -> str:
+    """Return a relatable consumer summary or concise professional summary."""
+    scored = _scored_domains(domains)
+    if persona_key in CONSUMER_OPENINGS:
+        return _consumer_summary(persona_key, fit, scored)
+
+    phrase = _persona_phrase(persona_label, fit)
     if not scored:
         return f"{phrase}. Scores appear as data layers publish."
 
-    best = max(scored, key=lambda kv: kv[1])
-    worst = min(scored, key=lambda kv: kv[1])
+    best = max(scored, key=lambda item: item[1])
+    worst = min(scored, key=lambda item: item[1])
 
-    parts = [phrase]
-    parts.append(f"strongest on {_word(best[0])}")
-    # Only flag a concern when it's genuinely weak and not the same as the best.
+    parts = [phrase, f"strongest on {_word(best[0])}"]
     if worst[0] != best[0] and worst[1] < STRONG:
         parts.append(f"watch {_word(worst[0])}")
     return " — ".join([parts[0], ", ".join(parts[1:])]) + "."
+
+
+def _highlight_tone(score: float) -> str:
+    if score >= STRONG:
+        return "positive"
+    if score < MODERATE:
+        return "caution"
+    return "neutral"
+
+
+def _highlight_copy(domain: str, tone: str, persona_key: str) -> str:
+    if domain == "market" and persona_key == "tenant":
+        return {
+            "positive": "Nearby rent information is comparatively favourable.",
+            "neutral": "Compare the full rent and service charges for similar homes.",
+            "caution": "Rent and service charges need careful comparison before paying.",
+        }[tone]
+    if domain == "market" and persona_key == "home_buyer":
+        return {
+            "positive": "Nearby purchase-price information is comparatively favourable.",
+            "neutral": "Compare recent prices for several similar homes before offering.",
+            "caution": "The purchase price needs careful comparison before offering.",
+        }[tone]
+    return HIGHLIGHT_COPY[domain][tone]
+
+
+def build_highlights(
+    persona_key: str,
+    domains: dict[str, Any],
+    priority: list[str],
+) -> list[dict[str, str]]:
+    """Select three readable takeaways: strongest, weakest, then priority."""
+    scored = _scored_domains(domains)
+    if not scored:
+        return []
+
+    ordered_names: list[str] = []
+    best = max(scored, key=lambda item: item[1])[0]
+    worst = min(scored, key=lambda item: item[1])[0]
+    ordered_names.append(best)
+    if worst != best:
+        ordered_names.append(worst)
+    ordered_names.extend(name for name in priority if name not in ordered_names)
+
+    scores = dict(scored)
+    highlights: list[dict[str, str]] = []
+    for name in ordered_names:
+        if name not in scores or name not in HIGHLIGHT_COPY:
+            continue
+        tone = _highlight_tone(scores[name])
+        title = HIGHLIGHT_TITLES[name]
+        if name == "market" and persona_key == "home_buyer":
+            title = "Purchase prices"
+        elif name == "market" and persona_key in {"investor", "developer"}:
+            title = "Market value"
+        highlights.append(
+            {
+                "domain": name,
+                "title": title,
+                "text": _highlight_copy(name, tone, persona_key),
+                "tone": tone,
+            }
+        )
+        if len(highlights) == 3:
+            break
+    return highlights

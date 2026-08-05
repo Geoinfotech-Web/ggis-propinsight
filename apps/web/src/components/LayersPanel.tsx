@@ -8,6 +8,7 @@ export type OverlayLayerId =
   | "score_marker"
   | "flood_context"
   | "land_use"
+  | "land_cover"
   | "school_poi"
   | "hospital_poi"
   | "bank_poi"

@@ -17,7 +17,7 @@ const DOMAIN_LABELS: Record<(typeof DOMAIN_ORDER)[number], string> = {
 
 const DOMAIN_KICKERS: Record<(typeof DOMAIN_ORDER)[number], string> = {
   flood: "Hazard · GGIS Flood Watch",
-  security: "Safety · district aggregates",
+  security: "Safety · local context",
   amenities: "Services · nearest POIs",
   accessibility: "Connectivity · roads & destinations",
   tenure: "Planning · overlays",
@@ -71,6 +71,7 @@ const SECURITY_LABELS: Record<string, string> = {
   most_common: "Most common",
   nearest_police: "Nearest police",
   coverage: "Based on",
+  data_source: "Incident source",
 };
 
 const TENURE_LABELS: Record<string, string> = {
@@ -409,8 +410,11 @@ export function ScorecardConsole({
 
   const topDomains = new Set(orderedDomains.slice(0, 3));
   const personaLabel = card?.persona?.label ?? personaDef.label;
+  const reportPersona = card?.persona?.key ?? persona;
+  const isConsumerReport = ["home_buyer", "tenant"].includes(reportPersona);
+  const showPlanningContext = ["investor", "developer"].includes(reportPersona);
   const showMarketListings = ["home_buyer", "tenant"].includes(
-    card?.persona?.key ?? persona,
+    reportPersona,
   );
 
   return (
@@ -477,6 +481,12 @@ export function ScorecardConsole({
                   {placeLabel}
                 </p>
               )}
+              {isConsumerReport && card.location.ward && (
+                <p className="mb-1 text-[10px]">
+                  {card.location.ward} ward
+                  {card.location.area_council && ` · ${card.location.area_council}`}
+                </p>
+              )}
               <div className="mb-2 flex items-end justify-between gap-3">
                 <div>
                   <p
@@ -505,49 +515,165 @@ export function ScorecardConsole({
                 </div>
               </div>
               {card.summary && (
-                <p
-                  className={clsx(
-                    "mb-2 text-[12px] font-medium leading-snug",
-                    dark ? "text-gray-200" : "text-slate-700",
-                  )}
-                >
-                  {card.summary}
-                </p>
-              )}
-              <div className="tabular-nums">
-                geohash <span className="font-semibold">{card.location.geohash8}</span>
-                {card.location.district && <> · {card.location.district}</>}
-              </div>
-              {card.location.land_use && (
                 <div
                   className={clsx(
-                    "mt-2 rounded-md border px-2 py-1.5",
-                    dark
-                      ? "border-amber-800/70 bg-amber-950/30 text-amber-200"
-                      : "border-amber-200 bg-amber-50 text-amber-900",
+                    "mb-2 rounded-lg border px-3 py-2.5",
+                    isConsumerReport
+                      ? dark
+                        ? "border-teal-800/70 bg-teal-950/30 text-teal-100"
+                        : "border-teal-200 bg-teal-50 text-teal-950"
+                      : dark
+                        ? "border-gray-800 bg-gray-950/50 text-gray-200"
+                        : "border-slate-200 bg-white text-slate-700",
                   )}
                 >
-                  <p className="text-[10px] font-semibold uppercase tracking-wide">
-                    Mapped land use
-                  </p>
-                  <p className="text-xs font-semibold">{card.location.land_use.label}</p>
-                  {card.location.land_use.name && (
-                    <p className="truncate text-[10px]">{card.location.land_use.name}</p>
+                  {isConsumerReport && (
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em]">
+                      What this means for you
+                    </p>
                   )}
-                  <p className="mt-1 text-[9px] leading-snug">
-                    Reference context only—confirm zoning and development rights with AGIS/FCTA.
-                  </p>
+                  <p className="text-[12px] font-medium leading-relaxed">{card.summary}</p>
                 </div>
               )}
-              <div className="tabular-nums">
-                profile <span className="font-semibold">{card.scoring_profile}</span>
-                {card.cached && (
-                  <>
-                    {" "}
-                    · <span className="text-status-normal">cached</span>
-                  </>
-                )}
-              </div>
+              {card.highlights && card.highlights.length > 0 && (
+                <div className="mb-2">
+                  <p
+                    className={clsx(
+                      "mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
+                      dark ? "text-gray-400" : "text-slate-500",
+                    )}
+                  >
+                    Report highlights
+                  </p>
+                  <div className="space-y-1.5">
+                    {card.highlights.slice(0, 3).map((highlight) => (
+                      <div
+                        key={highlight.domain}
+                        className={clsx(
+                          "flex gap-2 rounded-md border px-2.5 py-2",
+                          highlight.tone === "positive"
+                            ? dark
+                              ? "border-teal-800/60 bg-teal-950/20"
+                              : "border-teal-200 bg-teal-50/70"
+                            : highlight.tone === "caution"
+                              ? dark
+                                ? "border-amber-800/60 bg-amber-950/20"
+                                : "border-amber-200 bg-amber-50/70"
+                              : dark
+                                ? "border-gray-700 bg-gray-950/30"
+                                : "border-slate-200 bg-white",
+                        )}
+                      >
+                        <span
+                          className={clsx(
+                            "mt-1 h-2 w-2 shrink-0 rounded-full",
+                            highlight.tone === "positive"
+                              ? "bg-teal-500"
+                              : highlight.tone === "caution"
+                                ? "bg-amber-500"
+                                : "bg-slate-400",
+                          )}
+                          aria-hidden
+                        />
+                        <div>
+                          <p className="text-[11px] font-semibold">{highlight.title}</p>
+                          <p
+                            className={clsx(
+                              "text-[10px] leading-relaxed",
+                              dark ? "text-gray-400" : "text-slate-600",
+                            )}
+                          >
+                            {highlight.text}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {showPlanningContext && (
+                <>
+                  <div className="tabular-nums">
+                    geohash <span className="font-semibold">{card.location.geohash8}</span>
+                    {card.location.district && <> · {card.location.district}</>}
+                    {card.location.ward && <> · {card.location.ward} ward</>}
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5 text-[10px]">
+                    <span className="font-semibold uppercase tracking-wide">Planning context</span>
+                    <span
+                      className={clsx(
+                        "rounded-full px-1.5 py-0.5 font-semibold",
+                        card.location.planning_status === "official"
+                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                          : card.location.planning_status === "mapped_reference"
+                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                            : "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+                      )}
+                    >
+                      {card.location.planning_status === "official"
+                        ? "Official plan"
+                        : card.location.planning_status === "mapped_reference"
+                          ? "Mapped reference"
+                          : card.location.planning_status === "observed_cover_only"
+                            ? "Observed cover only"
+                            : "Unmapped"}
+                    </span>
+                  </div>
+                  {card.location.land_use && (
+                    <div
+                      className={clsx(
+                        "mt-2 rounded-md border px-2 py-1.5",
+                        dark
+                          ? "border-amber-800/70 bg-amber-950/30 text-amber-200"
+                          : "border-amber-200 bg-amber-50 text-amber-900",
+                      )}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wide">
+                        {card.location.land_use.designation === "official_masterplan"
+                          ? "Official planned land use"
+                          : "Mapped land use reference"}
+                      </p>
+                      <p className="text-xs font-semibold">{card.location.land_use.label}</p>
+                      {card.location.land_use.name && (
+                        <p className="truncate text-[10px]">{card.location.land_use.name}</p>
+                      )}
+                      <p className="mt-1 text-[9px] leading-snug">
+                        {card.location.land_use.advisory}
+                      </p>
+                    </div>
+                  )}
+                  {card.location.land_cover && (
+                    <div
+                      className={clsx(
+                        "mt-2 rounded-md border px-2 py-1.5",
+                        dark
+                          ? "border-sky-800/70 bg-sky-950/30 text-sky-200"
+                          : "border-sky-200 bg-sky-50 text-sky-900",
+                      )}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wide">
+                        Observed land cover
+                      </p>
+                      <p className="text-xs font-semibold">{card.location.land_cover.label}</p>
+                      <p className="text-[9px]">
+                        {card.location.land_cover.source} · {card.location.land_cover.resolution_m} m
+                      </p>
+                      <p className="mt-1 text-[9px] leading-snug">
+                        {card.location.land_cover.advisory}
+                      </p>
+                    </div>
+                  )}
+                  <div className="tabular-nums">
+                    profile <span className="font-semibold">{card.scoring_profile}</span>
+                    {card.cached && (
+                      <>
+                        {" "}
+                        · <span className="text-status-normal">cached</span>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="space-y-2">

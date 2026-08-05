@@ -30,15 +30,14 @@ PERSONAS: dict[str, dict[str, Any]] = {
         "key": "home_buyer",
         "label": "Home Buyer",
         "blurb": "Family home — flood, schools & clinics, safety, access",
-        # Feasibility excluded — not relevant to home acquisition report.
+        # Planning/tenure and feasibility are reserved for professional reports.
         "domain_weights": {
-            "flood": 0.21,
-            "amenities": 0.21,
-            "security": 0.16,
-            "accessibility": 0.16,
-            "livability": 0.10,
-            "tenure": 0.09,
-            "market": 0.07,
+            "flood": 0.23,
+            "amenities": 0.23,
+            "security": 0.17,
+            "accessibility": 0.17,
+            "livability": 0.11,
+            "market": 0.09,
         },
         "amenity_order": ("school", "hospital", "market", "bank"),
     },
@@ -62,15 +61,14 @@ PERSONAS: dict[str, dict[str, Any]] = {
         "key": "tenant",
         "label": "Tenant",
         "blurb": "Day-to-day living — amenities, safety, access, livability",
-        # Feasibility excluded — not relevant to rental living report.
+        # Planning/tenure and feasibility are not part of a renter's daily report.
         "domain_weights": {
-            "amenities": 0.22,
-            "security": 0.21,
+            "amenities": 0.23,
+            "security": 0.22,
             "flood": 0.15,
             "accessibility": 0.15,
-            "livability": 0.15,
+            "livability": 0.16,
             "market": 0.09,
-            "tenure": 0.03,
         },
         "amenity_order": ("school", "hospital", "market", "bank"),
     },

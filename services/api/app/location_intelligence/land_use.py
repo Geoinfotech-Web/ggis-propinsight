@@ -24,10 +24,15 @@ LAND_USE_LABELS: dict[str, str] = {
     "other": "Other mapped use",
 }
 
-ADVISORY = (
+REFERENCE_ADVISORY = (
     "Open mapped land-use context only; not a legal zoning, allocation, title, "
     "or development-control confirmation. Verify with AGIS/FCTA."
 )
+OFFICIAL_ADVISORY = (
+    "Official planning reference; confirm the current plan, plot allocation, title, "
+    "and development permission directly with AGIS/FCTA."
+)
+ADVISORY = REFERENCE_ADVISORY
 
 
 async def _is_published(session: AsyncSession) -> tuple[bool, str | None]:
@@ -49,7 +54,11 @@ def _properties(row: Any) -> dict[str, Any]:
         "source": row.source,
         "source_url": row.source_url,
         "effective_date": row.effective_date.isoformat() if row.effective_date else None,
-        "advisory": ADVISORY,
+        "advisory": (
+            OFFICIAL_ADVISORY
+            if row.designation == "official_masterplan"
+            else REFERENCE_ADVISORY
+        ),
     }
 
 
@@ -110,7 +119,9 @@ async def land_use_feature_collection(
             WHERE geom && ST_MakeEnvelope(
               :min_lon, :min_lat, :max_lon, :max_lat, 4326
             )
-            ORDER BY category, id
+            ORDER BY
+              CASE WHEN designation = 'official_masterplan' THEN 1 ELSE 0 END,
+              category, id
             LIMIT :limit
             """
         ),
@@ -132,6 +143,9 @@ async def land_use_feature_collection(
         }
         for row in result
     ]
+    designations = sorted(
+        {feature["properties"]["designation"] for feature in features}
+    )
     return {
         "type": "FeatureCollection",
         "features": features,
@@ -139,7 +153,7 @@ async def land_use_feature_collection(
             "status": "published",
             "version": version,
             "feature_count": len(features),
-            "designation": "observed_reference",
+            "designations": designations,
             "advisory": ADVISORY,
         },
     }

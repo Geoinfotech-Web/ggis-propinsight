@@ -39,17 +39,34 @@ export type LandUseFeatureCollection = {
     status: "published" | "unpublished";
     version: string | null;
     feature_count?: number;
-    designation?: string;
+    designations?: string[];
     advisory: string;
   };
+};
+
+export type LandCoverInfo = {
+  class_value: number;
+  category: string;
+  label: string;
+  designation: "observed_land_cover";
+  source: string;
+  source_url: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  resolution_m: number;
+  advisory: string;
 };
 
 export type Scorecard = {
   location: {
     district: string | null;
+    ward?: string | null;
+    area_council?: string | null;
     state: string | null;
     geohash8: string | null;
     land_use?: LandUseInfo | null;
+    land_cover?: LandCoverInfo | null;
+    planning_status: "official" | "mapped_reference" | "observed_cover_only" | "unmapped";
   };
   domains: Record<string, DomainResult>;
   layer_versions: Record<string, string>;
@@ -58,6 +75,12 @@ export type Scorecard = {
   persona?: PersonaInfo | null;
   fit_score?: number | null;
   summary?: string | null;
+  highlights?: Array<{
+    domain: string;
+    title: string;
+    text: string;
+    tone: "positive" | "neutral" | "caution";
+  }>;
   domain_priority?: string[];
 };
 

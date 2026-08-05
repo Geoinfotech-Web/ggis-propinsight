@@ -1,4 +1,4 @@
-"""Unit tests for district-level security scoring."""
+"""Unit tests for privacy-preserving local security scoring."""
 from __future__ import annotations
 
 from app.location_intelligence.security import score_security
@@ -32,13 +32,39 @@ def test_evidence_is_public_readable():
         period="2026-Q2",
         by_category={"theft": 8, "burglary": 3},
         district="Central Area",
+        incident_source="demo-seed",
     )
     ev = ds.indicators
     assert ev["safety_level"] == "Generally safe"
     assert ev["reported_incidents"] == "11 reports (Apr–Jun 2026)"
     assert ev["most_common"] == "8 theft, 3 burglary"
     assert ev["nearest_police"] == {"distance_m": 419.3}
-    assert ev["coverage"] == "District-level (Central Area)"
+    assert ev["coverage"] == "District-level incident reports (Central Area)"
+    assert ev["data_source"] == "Pilot demonstration data"
+
+
+def test_ward_context_labels_district_fallback_honestly():
+    ds = score_security(
+        incident_total=7,
+        police_distance_m=900.0,
+        district="Abuja Municipal",
+        ward="Garki",
+        aggregation_level="district",
+    )
+    assert "Garki ward" in ds.indicators["coverage"]
+    assert "aggregated for Abuja Municipal" in ds.indicators["coverage"]
+    assert "broader Abuja Municipal aggregate" in (ds.note or "")
+
+
+def test_true_ward_aggregate_is_labelled_ward_level():
+    ds = score_security(
+        incident_total=3,
+        police_distance_m=600.0,
+        district="Abuja Municipal",
+        ward="Garki",
+        aggregation_level="ward",
+    )
+    assert ds.indicators["coverage"] == "Ward-level incident reports (Garki)"
 
 
 def test_missing_inputs_do_not_crash():

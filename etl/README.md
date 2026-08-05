@@ -14,6 +14,9 @@ GDAL / rasterio / exactextract for raster analytics; QGIS-supported production w
 | Verified POIs (field) | Continuous | QField/ODK collection → admin review queue → publish |
 | Market samples | Monthly | Geocode → outlier filter → spatial price surfaces (kriging/IDW) |
 | Open land-use context | Monthly / Overture release | Overture `base/land_use` polygons → stable product classes → atomic `land_use` publish; explicitly non-statutory |
+| FCT wards & operational boundary | With land-use/cover refresh | GRID3 wards v3 → publish 62 local lookup areas + dissolve → provenance-stamped FCT clipping boundary |
+| Observed land cover | Monthly | Dynamic World modal class when GEE IAM works; automatic ESA WorldCover 10 m fallback → FCT-clipped COG |
+| Official planning vectors | On licensed delivery | AGIS/FCTA SHP/GPKG/GeoJSON → normalize → clip → `official_masterplan` precedence |
 
 ## `layer_version` discipline
 
@@ -49,6 +52,9 @@ Domain readiness is gated by published `layer_registry` versions — see
 | `tasks/dem.py` | `terrain_derivatives` — slope, flow accumulation, TWI COGs → bump `dem`. |
 | `tasks/flood_tiles.py` | `mirror_hazard_tiles` — mirror GGIS hazard COGs on model-version change. |
 | `tasks/land_use.py` | `refresh_land_use` — Overture polygon query → classify → atomic PostGIS publish; never represented as official AGIS zoning. |
+| `tasks/boundaries.py` | `refresh_fct_boundary` — dissolve 62 GRID3 FCT wards into the operational clipping boundary. |
+| `tasks/land_cover.py` | `refresh_land_cover` — Dynamic World preferred / ESA fallback → FCT-clipped COG and versioned metadata. |
+| `tasks/official_land_use.py` | `import_official_land_use` — licensed AGIS/FCTA vector normalization and authoritative precedence. |
 
 The `layer_registry` table (Alembic migration `0002`) is the shared source of truth
 for current layer versions; the API reads it to stamp scorecards, ETL bumps it on
@@ -101,6 +107,8 @@ Exports:
 - `export_dem_cop30(bbox, out)` — Copernicus GLO-30 DEM mosaic for the AOI.
 - `export_s2_composite(bbox, out, start, end)` — cloud-masked Sentinel-2 median
   composite (RGB+NIR) for vegetation/NDVI analysis.
+- `export_dynamic_world_mode(bbox, out, start, end)` — modal observed-cover class;
+  `refresh_land_cover` falls back to ESA WorldCover when GEE IAM is unavailable.
 
 > `getDownloadURL` caps at a few tens of MB. For an AOI beyond that (all of FCT
 > at 30 m), tile the bbox or switch to `ee.batch.Export.image.toCloudStorage`.
@@ -115,9 +123,15 @@ docker compose up --build etl-worker etl-beat
 celery -A aia_etl.celery_app call aia_etl.tasks.osm.refresh_osm
 celery -A aia_etl.celery_app call aia_etl.tasks.flood_tiles.mirror_hazard_tiles
 celery -A aia_etl.celery_app call aia_etl.tasks.land_use.refresh_land_use
+celery -A aia_etl.celery_app call aia_etl.tasks.boundaries.refresh_fct_boundary
+celery -A aia_etl.celery_app call aia_etl.tasks.land_cover.refresh_land_cover
 
 # DEM straight from Earth Engine (Copernicus GLO-30) → slope/flow-acc/TWI COGs:
 celery -A aia_etl.celery_app call aia_etl.tasks.dem.dem_from_gee
+
+# After receiving licensed AGIS/FCTA vectors (example field names):
+celery -A aia_etl.celery_app call aia_etl.tasks.official_land_use.import_official_land_use \
+  --args='["/data/agis/fct_plan.gpkg","FCT Regional Plan","LAND_USE","ZONE_NAME"]'
 ```
 
 ## Tests

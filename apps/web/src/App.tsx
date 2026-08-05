@@ -25,6 +25,7 @@ import {
 } from "./lib/amenitiesMap";
 import { loadPersona, savePersona, type PersonaKey } from "./lib/personas";
 import { hideLandUseLayer, showLandUseLayer } from "./lib/landUseMap";
+import { hideLandCoverLayer, showLandCoverLayer } from "./lib/landCoverMap";
 import { applyTheme, loadTheme, type Theme } from "./theme";
 
 const FCT_CENTER: [number, number] = [7.4913, 9.0579];
@@ -65,9 +66,16 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
     enabled: true,
   },
   {
+    id: "land_cover",
+    label: "Observed land cover · entire FCT",
+    description: "Wall-to-wall satellite classification; not zoning",
+    swatch: "#397d49",
+    enabled: true,
+  },
+  {
     id: "land_use",
-    label: "Land use / masterplan context",
-    description: "Open mapped use; verify official zoning with AGIS/FCTA",
+    label: "Mapped / official land use",
+    description: "Detailed mapped uses; official plans take precedence",
     swatch: "#8b5cf6",
     enabled: true,
   },
@@ -224,6 +232,7 @@ export default function App() {
     map.on("load", resize);
     map.on("error", (e) => {
       const msg = e.error?.message || "Map failed to load tiles";
+      if (/Cannot style non-existing layer/i.test(msg)) return;
       if (/style|source|Failed to fetch|NetworkError/i.test(msg)) {
         setMapError(msg);
       }
@@ -288,6 +297,21 @@ export default function App() {
       map.resize();
     });
   }, [basemapId, layerEnabled]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const syncLandCover = () => {
+      if (!map.isStyleLoaded()) return;
+      if (layerEnabled("land_cover")) showLandCoverLayer(map);
+      else hideLandCoverLayer(map);
+    };
+    syncLandCover();
+    map.on("style.load", syncLandCover);
+    return () => {
+      map.off("style.load", syncLandCover);
+    };
+  }, [basemapId, layers, layerEnabled]);
 
   useEffect(() => {
     const map = mapRef.current;

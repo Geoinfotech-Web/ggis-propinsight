@@ -60,8 +60,18 @@ export function showLandUseLayer(
       id: LAND_USE_FILL_ID,
       type: "fill",
       source: LAND_USE_SOURCE_ID,
-      paint: { "fill-color": colorExpression, "fill-opacity": 0.32 },
+      paint: {
+        "fill-color": colorExpression,
+        "fill-opacity": [
+          "case",
+          ["==", ["get", "designation"], "official_masterplan"],
+          0.52,
+          0.3,
+        ],
+      },
     });
+  } else {
+    map.setLayoutProperty(LAND_USE_FILL_ID, "visibility", "visible");
   }
   if (!map.getLayer(LAND_USE_LINE_ID)) {
     map.addLayer({
@@ -71,16 +81,26 @@ export function showLandUseLayer(
       paint: {
         "line-color": colorExpression,
         "line-opacity": 0.75,
-        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.3, 14, 1.1],
+        "line-width": [
+          "case",
+          ["==", ["get", "designation"], "official_masterplan"],
+          2,
+          ["interpolate", ["linear"], ["zoom"], 8, 0.3, 14, 1.1],
+        ],
       },
     });
+  } else {
+    map.setLayoutProperty(LAND_USE_LINE_ID, "visibility", "visible");
   }
-  map.setLayoutProperty(LAND_USE_FILL_ID, "visibility", "visible");
-  map.setLayoutProperty(LAND_USE_LINE_ID, "visibility", "visible");
 }
 
 export function hideLandUseLayer(map: maplibregl.Map): void {
   for (const id of [LAND_USE_FILL_ID, LAND_USE_LINE_ID]) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
+    if (!map.getLayer(id)) continue;
+    try {
+      map.setLayoutProperty(id, "visibility", "none");
+    } catch {
+      // A basemap style swap can remove the layer between lookup and mutation.
+    }
   }
 }

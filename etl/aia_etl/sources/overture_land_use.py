@@ -6,6 +6,7 @@ keeps this distinction in every row through ``designation`` and attribution.
 """
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 
@@ -107,17 +108,56 @@ def fetch_overture_land_use(
     finally:
         con.close()
 
-    records = [
-        LandUseRecord(
-            source_id=str(source_id),
-            geometry=str(geometry),
-            category=normalise_category(source_class, source_subtype),
-            source_class=source_class,
-            source_subtype=source_subtype,
-            name=name,
+    records: list[LandUseRecord] = []
+    rejected_oversized = 0
+    max_width = max(3.0, (bbox[2] - bbox[0]) * 4)
+    max_height = max(3.0, (bbox[3] - bbox[1]) * 4)
+    for source_id, name, source_class, source_subtype, geometry in rows:
+        if not source_id or not geometry:
+            continue
+        bounds = geometry_bounds(str(geometry))
+        if bounds[2] - bounds[0] > max_width or bounds[3] - bounds[1] > max_height:
+            rejected_oversized += 1
+            continue
+        records.append(
+            LandUseRecord(
+                source_id=str(source_id),
+                geometry=str(geometry),
+                category=normalise_category(source_class, source_subtype),
+                source_class=source_class,
+                source_subtype=source_subtype,
+                name=name,
+            )
         )
-        for source_id, name, source_class, source_subtype, geometry in rows
-        if source_id and geometry
-    ]
+    if rejected_oversized:
+        log.warning(
+            "rejected %d oversized/antimeridian Overture land-use geometries",
+            rejected_oversized,
+        )
     log.info("Overture land use %s returned %d polygons", resolved_release, len(records))
     return records, resolved_release
+
+
+def geometry_bounds(geometry: str) -> tuple[float, float, float, float]:
+    """Return GeoJSON bounds without accepting a heavyweight geometry dependency."""
+    coordinates = json.loads(geometry).get("coordinates")
+    points: list[tuple[float, float]] = []
+
+    def visit(value: object) -> None:
+        if (
+            isinstance(value, list)
+            and len(value) >= 2
+            and isinstance(value[0], (int, float))
+            and isinstance(value[1], (int, float))
+        ):
+            points.append((float(value[0]), float(value[1])))
+            return
+        if isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(coordinates)
+    if not points:
+        raise ValueError("land-use geometry contains no coordinates")
+    xs, ys = zip(*points, strict=True)
+    return min(xs), min(ys), max(xs), max(ys)

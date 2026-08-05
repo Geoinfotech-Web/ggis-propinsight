@@ -7,6 +7,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends libexpat1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # The editable install needs the package source present, so copy first.
 # (.dockerignore keeps the host .venv and caches out of the image.)
 COPY . .

@@ -1,6 +1,6 @@
 # GGIS PropInsight (AIA) — Handoff
 
-_Last updated: 2026-08-04_
+_Last updated: 2026-08-05_
 
 Engineering handoff for **GGIS PropInsight** (internal codename **AIA**), a location
 intelligence web platform for the Nigerian property market. Pilot: **FCT / Abuja**.
@@ -24,6 +24,8 @@ Project Overview (v1.2), Technical Design Document (v1.1), and Implementation Pl
 | CI (api + etl + web) | ✅ done |
 | Multi-source POIs (Overpass + Overture + GRID3) | ✅ adapters configured; transactional publish + QA gates added |
 | Amenity / accessibility / feasibility domains | ⚠️ amenities has live Overpass data; roads and DEM remain demo-backed until production ETL runs |
+| FCT land context | ✅ GRID3-clipped Overture uses + full-FCT ESA WorldCover 10 m observed cover published |
+| Official AGIS/FCTA planning import | ✅ importer ready; ⚠️ licensed vector dataset and web-reuse permission still required |
 
 **Flood** and **amenities** have live sources. Accessibility, feasibility,
 security, and tenure can score locally but are still backed wholly or partly by
@@ -78,8 +80,8 @@ docker compose up -d etl-worker etl-beat
 
 ### Tests
 ```bash
-cd services/api && pip install -e ".[dev]" && pytest -q      # 58 tests
-cd etl && pip install pytest "sqlalchemy>=2.0" pydantic-settings requests && pytest -q   # 42 tests
+cd services/api && pip install -e ".[dev]" && pytest -q      # 64 tests
+cd etl && pip install -e ".[dev]" && pytest -q               # 46 tests
 ```
 
 ---
@@ -142,7 +144,12 @@ Key files:
 - `etl/aia_etl/gee.py` — Earth Engine DEM / Sentinel-2 exports.
 - `etl/aia_etl/tasks/` — osm, dem, flood_tiles pipelines.
 - `etl/aia_etl/tasks/land_use.py` — Overture/OSM open land-use context publisher.
+- `etl/aia_etl/tasks/boundaries.py` — GRID3 FCT ward dissolve / clipping boundary.
+- `services/api/app/location_intelligence/security.py` — ward-aware security with an explicit district incident fallback.
+- `etl/aia_etl/tasks/land_cover.py` — Dynamic World preferred, ESA WorldCover fallback COG.
+- `etl/aia_etl/tasks/official_land_use.py` — licensed AGIS/FCTA vector importer.
 - `services/api/app/location_intelligence/land_use.py` — viewport GeoJSON and point classification; AGIS advisory boundary.
+- `services/api/app/location_intelligence/land_cover.py` — observed-cover point sampling, metadata, and PNG tiles.
 
 ---
 
@@ -161,9 +168,12 @@ Key files:
 6. **Check domain readiness** — `GET /v1/meta/readiness` (and
    `etl/aia_etl/domain_deps.py`) for the Phase 1 unlock matrix.
 7. **Branch protection** on `main` + require CI, then move to PR-based flow.
-8. **Acquire the official AGIS land-use/masterplan soft copy and reuse approval**;
-   load it with `designation=official_masterplan` so it takes precedence over the
-   current Overture/OSM reference layer without changing the API or UI contract.
+8. **Acquire the official AGIS land-use/masterplan vectors and reuse approval**;
+   run `aia_etl.tasks.official_land_use.import_official_land_use`. The API/UI
+   already give `official_masterplan` precedence over Overture/OSM reference use.
+9. **Unblock Dynamic World freshness** by granting the GEE service account
+   `roles/serviceusage.serviceUsageConsumer`; `refresh_land_cover` will then
+   replace the 2021 ESA fallback with a current modal Dynamic World composite.
 
 ---
 

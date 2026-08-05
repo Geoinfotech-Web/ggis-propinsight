@@ -48,14 +48,24 @@ curl -s http://localhost:8001/v1/locations/analyze \
 Flood is **live** (via GGIS / mock). POIs can be refreshed from OSM Overpass,
 Overture Maps, and GRID3 Nigeria. The map also serves a versioned open land-use
 reference layer from Overture/OpenStreetMap (residential, industrial, commercial,
-institutional, protected/reserve, agricultural, and related classes). It is
-context only—not statutory zoning; confirm allocations and development rights
-with AGIS/FCTA. Roads, DEM, security, and official planning remain demo-backed
-until their production ETL layers pass QA and publish atomically.
+institutional, protected/reserve, agricultural, and related classes), clipped to
+the current GRID3 operational FCT boundary. A separate 10 m ESA WorldCover COG
+provides wall-to-wall observed cover across FCT. Both are context—not statutory
+zoning; confirm allocations and development rights with AGIS/FCTA. A prepared
+AGIS/FCTA vector importer gives licensed official plans precedence when acquired.
+
+Security resolves each point to its GRID3 ward and uses local police proximity.
+Ward incident aggregates are used only when a source actually publishes them;
+otherwise the report clearly labels the broader district fallback rather than
+presenting district totals as neighbourhood crime data.
 
 ```bash
 # Open land-use GeoJSON for the current map viewport
 curl -s "http://localhost:8001/v1/locations/land-use?min_lon=7.30&min_lat=8.90&max_lon=7.65&max_lat=9.20"
+
+# Observed-cover metadata and raster tiles
+curl -s http://localhost:8001/v1/locations/land-cover/meta
+curl -o cover.png http://localhost:8001/v1/locations/land-cover/tiles/10/533/486.png
 ```
 
 ## Frontend dev

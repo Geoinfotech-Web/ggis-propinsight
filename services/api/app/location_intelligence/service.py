@@ -34,6 +34,7 @@ from app.location_intelligence.feasibility import (
     nearest_utility_distance_m,
     score_feasibility,
 )
+from app.location_intelligence.land_cover import land_cover_at_point
 from app.location_intelligence.land_use import land_use_at_point
 from app.location_intelligence.market import market_samples_for_point, score_market
 from app.location_intelligence.personas import (
@@ -58,11 +59,12 @@ from app.location_intelligence.schemas import (
 )
 from app.location_intelligence.security import (
     district_for_point,
-    district_incidents,
+    incidents_for_location,
     nearest_police_distance_m,
     score_security,
+    ward_for_point,
 )
-from app.location_intelligence.summary import build_summary
+from app.location_intelligence.summary import build_highlights, build_summary
 from app.location_intelligence.tenure import overlapping_planning, score_tenure
 from app.scoring.engine import DomainScore
 
@@ -216,6 +218,7 @@ async def _score_security(
     lat: float,
     versions: dict[str, str],
     district: dict[str, Any] | None,
+    ward: dict[str, Any] | None,
 ) -> DomainResult:
     required = REQUIRED_LAYERS["security"]
     if not layers_ready(versions, required) or session is None:
@@ -227,20 +230,24 @@ async def _score_security(
         categories=("police",),
         radius_m=5000.0,
     )
-    # Security is a district-level aggregate — a point outside covered districts
-    # cannot be scored honestly.
+    # Incident totals require at least the district fallback; local police POIs
+    # remain useful but are not enough to imply a local incident rate.
     if district is None:
         result = DomainResult(
             score=None,
             confidence="Low",
             status="degraded",
             evidence={},
-            note="Security is district-level; this point is outside covered districts.",
+            note="No published incident aggregate covers this point.",
         )
         if nearby_police:
             result.evidence["nearby"] = nearby_police
         return result
-    incidents = await district_incidents(session, district["id"])
+    incidents = await incidents_for_location(
+        session,
+        district["id"],
+        ward["id"] if ward else None,
+    )
     police_m = await nearest_police_distance_m(session, lon, lat)
     ds = score_security(
         incident_total=None if incidents is None else incidents["total"],
@@ -248,6 +255,11 @@ async def _score_security(
         period=None if incidents is None else incidents["period"],
         by_category=None if incidents is None else incidents["by_category"],
         district=district["name"],
+        ward=ward["name"] if ward else None,
+        aggregation_level=(
+            "district" if incidents is None else incidents["aggregation_level"]
+        ),
+        incident_source=None if incidents is None else incidents.get("source"),
     )
     result = domainscore_to_result(ds, status="ok")
     if nearby_police:
@@ -360,9 +372,19 @@ async def analyze(
             note=fr.message or "Flood domain temporarily unavailable",
         )
 
-    # --- Resolve containing district once (drives security + LocationInfo) ---
+    # --- Resolve administrative context once (drives security + LocationInfo) ---
     district = await district_for_point(session, lon, lat) if session is not None else None
+    ward = await ward_for_point(session, lon, lat) if session is not None else None
     land_use = await land_use_at_point(session, lon, lat) if session is not None else None
+    land_cover = await land_cover_at_point(session, lon, lat) if session is not None else None
+    if land_use and land_use["designation"] == "official_masterplan":
+        planning_status = "official"
+    elif land_use:
+        planning_status = "mapped_reference"
+    elif land_cover:
+        planning_status = "observed_cover_only"
+    else:
+        planning_status = "unmapped"
 
     # --- Tier-1 domains gated by published ETL layers ---
     domains["amenities"] = await _score_amenities(session, lon, lat, versions)
@@ -371,8 +393,10 @@ async def analyze(
         session, lon, lat, versions, fr.normalised
     )
 
-    # --- Tier 2 domains (security district aggregate, advisory tenure overlay) ---
-    domains["security"] = await _score_security(session, lon, lat, versions, district)
+    # --- Tier 2 domains (most-local safe security aggregate, planning overlay) ---
+    domains["security"] = await _score_security(
+        session, lon, lat, versions, district, ward
+    )
     domains["tenure"] = await _score_tenure(session, lon, lat, versions)
     domains["market"] = await _score_market(session, lon, lat, versions, persona_key)
 
@@ -388,8 +412,12 @@ async def analyze(
         location=LocationInfo(
             geohash8=gh8,
             district=district["name"] if district else None,
+            ward=ward["name"] if ward else None,
+            area_council=ward["area_council"] if ward else None,
             state=district["state"] if district else None,
             land_use=land_use,
+            land_cover=land_cover,
+            planning_status=planning_status,
         ),
         domains=report_domains,
         layer_versions=layer_versions,
@@ -397,7 +425,13 @@ async def analyze(
         cached=False,
         persona=PersonaInfo(**persona_meta),
         fit_score=fit,
-        summary=build_summary(persona_meta["label"], fit, report_domains),
+        summary=build_summary(
+            persona_key,
+            persona_meta["label"],
+            fit,
+            report_domains,
+        ),
+        highlights=build_highlights(persona_key, report_domains, priority),
         domain_priority=priority,
     )
 

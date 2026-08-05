@@ -31,11 +31,12 @@ def test_domain_priority_investor_leads_with_market():
     assert domain_priority("home_buyer")[0] == "flood"
 
 
-def test_buyer_and_tenant_exclude_feasibility():
-    assert "feasibility" not in included_domains("home_buyer")
-    assert "feasibility" not in domain_priority("home_buyer")
-    assert "feasibility" not in included_domains("tenant")
-    assert "feasibility" not in domain_priority("tenant")
+def test_buyer_and_tenant_exclude_planning_and_feasibility():
+    for persona in ("home_buyer", "tenant"):
+        assert "feasibility" not in included_domains(persona)
+        assert "feasibility" not in domain_priority(persona)
+        assert "tenure" not in included_domains(persona)
+        assert "tenure" not in domain_priority(persona)
 
 
 def test_investor_and_developer_include_feasibility():
@@ -47,6 +48,7 @@ def test_filter_domains_for_persona_drops_excluded():
     domains = {
         "flood": SimpleNamespace(score=80.0),
         "feasibility": SimpleNamespace(score=40.0),
+        "tenure": SimpleNamespace(score=90.0),
         "amenities": SimpleNamespace(score=60.0),
     }
     filtered = filter_domains_for_persona(domains, "home_buyer")
@@ -55,7 +57,7 @@ def test_filter_domains_for_persona_drops_excluded():
 
 
 def test_fit_score_renormalises_over_present_domains():
-    # flood and amenities equal weight (0.21) for home_buyer → 50
+    # Flood and amenities have equal weight for home_buyer, so the fit is 50.
     domains = {
         "flood": SimpleNamespace(score=100.0),
         "amenities": SimpleNamespace(score=0.0),

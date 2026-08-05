@@ -28,6 +28,9 @@ app = Celery(
         "aia_etl.tasks.flood_tiles",
         "aia_etl.tasks.market",
         "aia_etl.tasks.land_use",
+        "aia_etl.tasks.boundaries",
+        "aia_etl.tasks.land_cover",
+        "aia_etl.tasks.official_land_use",
     ],
 )
 
@@ -59,5 +62,9 @@ app.conf.beat_schedule = {
     "land-use-monthly": {
         "task": "aia_etl.tasks.land_use.refresh_land_use",
         "schedule": crontab(minute=30, hour=3, day_of_month=2),
+    },
+    "land-cover-monthly": {
+        "task": "aia_etl.tasks.land_cover.refresh_land_cover",
+        "schedule": crontab(minute=0, hour=4, day_of_month=2),
     },
 }

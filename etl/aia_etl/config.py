@@ -45,6 +45,15 @@ class ETLSettings(BaseSettings):
         "https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/"
         "Schools_in_Nigeria/FeatureServer/0"
     )
+    grid3_wards_url: str = (
+        "https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/"
+        "GRID3_NGA_operational_wards_v3_0/FeatureServer/0"
+    )
+
+    # Wall-to-wall observed cover. ``auto`` prefers Dynamic World and falls
+    # back to the open ESA WorldCover COGs when Earth Engine IAM is unavailable.
+    land_cover_source: str = "auto"
+    land_cover_scale_m: int = 30
 
     # Licensed open market fallback used when no partner CSV is mounted.
     market_source_url: str = (
