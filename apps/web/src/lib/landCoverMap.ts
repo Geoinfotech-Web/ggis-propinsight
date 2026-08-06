@@ -21,7 +21,10 @@ export function showLandCoverLayer(map: maplibregl.Map): void {
       tiles: ["/v1/locations/land-cover/tiles/{z}/{x}/{y}.png"],
       tileSize: 256,
       minzoom: 6,
-      maxzoom: 18,
+      // 30 m source pixels are already matched around z12. Let MapLibre
+      // overzoom those cached tiles instead of asking the API to reproject
+      // dozens of increasingly detailed tiles during close-up navigation.
+      maxzoom: 12,
       bounds: [6.77, 8.41, 7.73, 9.42],
       attribution: "Observed cover: ESA WorldCover / Google Dynamic World",
     });

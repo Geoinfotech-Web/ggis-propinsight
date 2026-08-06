@@ -11,6 +11,7 @@ import { BasemapSwitcher } from "./components/BasemapSwitcher";
 import { IconHome } from "./components/Icons";
 import { LayersPanel, type OverlayLayer, type OverlayLayerId } from "./components/LayersPanel";
 import { MapLegend } from "./components/MapLegend";
+import { Map3DControl } from "./components/Map3DControl";
 import { NearbyAmenitiesList, type NearbyPoiItem } from "./components/NearbyAmenitiesList";
 import { ScorecardConsole } from "./components/ScorecardConsole";
 import {
@@ -26,6 +27,12 @@ import {
 import { loadPersona, savePersona, type PersonaKey } from "./lib/personas";
 import { hideLandUseLayer, showLandUseLayer } from "./lib/landUseMap";
 import { hideLandCoverLayer, showLandCoverLayer } from "./lib/landCoverMap";
+import {
+  AUTO_3D_ENTER_ZOOM,
+  AUTO_3D_EXIT_ZOOM,
+  syncMap3DStyle,
+  transitionMapDimension,
+} from "./lib/map3d";
 import { applyTheme, loadTheme, type Theme } from "./theme";
 
 const FCT_CENTER: [number, number] = [7.4913, 9.0579];
@@ -143,6 +150,8 @@ export default function App() {
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const poiMarkersRef = useRef<maplibregl.Marker[]>([]);
   const basemapIdRef = useRef<BasemapId>(DEFAULT_BASEMAP_ID);
+  const view3DRef = useRef(false);
+  const suppressAuto3DRef = useRef(false);
   const lastPointRef = useRef<{ lon: number; lat: number; label?: string } | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") return "light";
@@ -150,6 +159,7 @@ export default function App() {
   });
   const [persona, setPersona] = useState<PersonaKey>(() => loadPersona());
   const [basemapId, setBasemapId] = useState<BasemapId>(DEFAULT_BASEMAP_ID);
+  const [view3D, setView3D] = useState(false);
   const [layers, setLayers] = useState<OverlayLayer[]>(DEFAULT_LAYERS);
   const [card, setCard] = useState<Scorecard | null>(null);
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
@@ -167,6 +177,20 @@ export default function App() {
     (id: OverlayLayerId) => layers.find((l) => l.id === id)?.enabled ?? true,
     [layers],
   );
+
+  const changeMapDimension = useCallback((enabled: boolean, animate = true) => {
+    view3DRef.current = enabled;
+    setView3D(enabled);
+
+    const map = mapRef.current;
+    if (!map) return;
+    try {
+      syncMap3DStyle(map, enabled);
+      if (animate) transitionMapDimension(map, enabled);
+    } catch (err) {
+      setMapError(`3D map unavailable: ${(err as Error).message}`);
+    }
+  }, []);
 
   const runAnalyse = useCallback(
     async (lng: number, lat: number, label?: string, profile: PersonaKey = persona) => {
@@ -224,7 +248,25 @@ export default function App() {
     mapRef.current = map;
 
     // Keep zoom clear of left-side layers / basemap chrome.
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    map.addControl(
+      new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
+      "top-right",
+    );
+
+    const syncAutomatic3D = () => {
+      const zoom = map.getZoom();
+      if (zoom < AUTO_3D_EXIT_ZOOM) {
+        suppressAuto3DRef.current = false;
+        if (view3DRef.current) changeMapDimension(false);
+      } else if (
+        zoom >= AUTO_3D_ENTER_ZOOM &&
+        !suppressAuto3DRef.current &&
+        !view3DRef.current
+      ) {
+        changeMapDimension(true);
+      }
+    };
+    map.on("zoomend", syncAutomatic3D);
 
     const resize = () => {
       if (!cancelled && mapRef.current) map.resize();
@@ -249,6 +291,7 @@ export default function App() {
       cancelled = true;
       ro.disconnect();
       window.removeEventListener("resize", resize);
+      map.off("zoomend", syncAutomatic3D);
       markerRef.current?.remove();
       markerRef.current = null;
       poiMarkersRef.current.forEach((marker) => marker.remove());
@@ -257,7 +300,7 @@ export default function App() {
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [changeMapDimension]);
 
   // Keep click handler current without remounting the map.
   useEffect(() => {
@@ -288,6 +331,11 @@ export default function App() {
     map.setStyle(getBasemap(basemapId).style);
     map.once("style.load", () => {
       map.jumpTo({ center, zoom, bearing, pitch });
+      try {
+        syncMap3DStyle(map, view3DRef.current);
+      } catch (err) {
+        setMapError(`3D map unavailable: ${(err as Error).message}`);
+      }
       if (markerLngLat && layerEnabled("score_marker")) {
         markerRef.current?.remove();
         markerRef.current = new maplibregl.Marker({ color: "#0369a1" })
@@ -312,6 +360,23 @@ export default function App() {
       map.off("style.load", syncLandCover);
     };
   }, [basemapId, layers, layerEnabled]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const restore3D = () => {
+      try {
+        syncMap3DStyle(map, view3DRef.current);
+      } catch (err) {
+        setMapError(`3D map unavailable: ${(err as Error).message}`);
+      }
+    };
+    if (map.isStyleLoaded()) restore3D();
+    map.on("style.load", restore3D);
+    return () => {
+      map.off("style.load", restore3D);
+    };
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -441,6 +506,11 @@ export default function App() {
   };
 
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+  const toggle3D = () => {
+    const enabled = !view3DRef.current;
+    suppressAuto3DRef.current = !enabled;
+    changeMapDimension(enabled);
+  };
   const dark = theme === "dark";
   const nearbyAmenities = nearbyFromScorecard(card?.domains.amenities?.evidence);
   const anyAmenityLayerEnabled = AMENITY_LAYER_IDS.some((id) => layerEnabled(id));
@@ -513,7 +583,15 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
-                mapRef.current?.flyTo({ center: FCT_CENTER, zoom: FCT_HOME_ZOOM, duration: 1000 });
+                suppressAuto3DRef.current = false;
+                changeMapDimension(false, false);
+                mapRef.current?.flyTo({
+                  center: FCT_CENTER,
+                  zoom: FCT_HOME_ZOOM,
+                  pitch: 0,
+                  bearing: 0,
+                  duration: 1000,
+                });
               }}
               className={clsx(
                 "pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border shadow-lg transition",
@@ -531,6 +609,9 @@ export default function App() {
             >
               <IconHome size={15} />
             </button>
+            <div className="pointer-events-auto">
+              <Map3DControl theme={theme} enabled={view3D} onToggle={toggle3D} />
+            </div>
             <div className="pointer-events-auto">
               <BasemapSwitcher theme={theme} activeId={basemapId} onChange={setBasemapId} />
             </div>

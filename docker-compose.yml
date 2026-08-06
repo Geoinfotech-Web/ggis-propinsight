@@ -71,6 +71,11 @@ services:
       # rebuilt; using the published port avoids a stale internal DNS/socket.
       API_PROXY_TARGET: http://host.docker.internal:8001
       VITE_USE_POLLING: "1"
+      VITE_3D_TERRAIN_ENABLED: ${VITE_3D_TERRAIN_ENABLED:-false}
+      VITE_TERRAIN_TILEJSON_URL: ${VITE_TERRAIN_TILEJSON_URL:-https://tiles.mapterhorn.com/tilejson.json}
+      VITE_TERRAIN_ENCODING: ${VITE_TERRAIN_ENCODING:-terrarium}
+      VITE_TERRAIN_TILE_SIZE: ${VITE_TERRAIN_TILE_SIZE:-512}
+      VITE_BUILDINGS_TILEJSON_URL: ${VITE_BUILDINGS_TILEJSON_URL:-https://tiles.openfreemap.org/planet}
     ports:
       - "5174:5174"
     volumes:

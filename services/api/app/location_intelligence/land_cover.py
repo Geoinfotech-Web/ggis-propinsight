@@ -4,10 +4,16 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import rasterio
 from fastapi import HTTPException, Response
+from PIL import Image
+from rasterio.transform import from_bounds
+from rasterio.warp import Resampling, reproject, transform
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,9 +65,6 @@ def _class_info(raster: dict[str, Any], value: int) -> dict[str, Any] | None:
 
 
 def _sample(path: str, lon: float, lat: float) -> int | None:
-    import rasterio
-    from rasterio.warp import transform
-
     if not Path(path).is_file():
         return None
     with rasterio.open(path) as src:
@@ -94,12 +97,6 @@ def _tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
 
 
 def _render_tile(path: str, classes: dict[str, Any], z: int, x: int, y: int) -> bytes:
-    import numpy as np
-    import rasterio
-    from PIL import Image
-    from rasterio.transform import from_bounds
-    from rasterio.warp import Resampling, reproject
-
     data = np.full((256, 256), 255, dtype="uint8")
     with rasterio.open(path) as src:
         reproject(
@@ -120,8 +117,22 @@ def _render_tile(path: str, classes: dict[str, Any], z: int, x: int, y: int) -> 
         rgb = tuple(int(color[index : index + 2], 16) for index in (0, 2, 4))
         rgba[data == value] = (*rgb, 185)
     output = io.BytesIO()
-    Image.fromarray(rgba, "RGBA").save(output, format="PNG", optimize=True)
+    Image.fromarray(rgba, "RGBA").save(output, format="PNG", compress_level=3)
     return output.getvalue()
+
+
+@lru_cache(maxsize=512)
+def _render_tile_cached(
+    path: str,
+    classes_json: str,
+    layer_version: str,
+    z: int,
+    x: int,
+    y: int,
+) -> bytes:
+    """Cache rendered tiles; the version key invalidates them after an ETL publish."""
+    del layer_version
+    return _render_tile(path, json.loads(classes_json), z, x, y)
 
 
 async def land_cover_tile(
@@ -133,9 +144,10 @@ async def land_cover_tile(
     if not raster or not Path(raster["raster_path"]).is_file():
         raise HTTPException(status_code=404, detail="land-cover raster is unpublished")
     content = await asyncio.to_thread(
-        _render_tile,
+        _render_tile_cached,
         raster["raster_path"],
-        raster["classes"],
+        json.dumps(raster["classes"], sort_keys=True, separators=(",", ":")),
+        str(raster["layer_version"]),
         z,
         x,
         y,
