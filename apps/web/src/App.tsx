@@ -57,6 +57,23 @@ const AMENITY_LAYER_IDS: OverlayLayerId[] = [
   "fuel_poi",
 ];
 
+function poiMarkerSizeForZoom(zoom: number): number {
+  return Math.round(Math.min(38, Math.max(18, 18 + (zoom - 9) * 2.5)));
+}
+
+function resizePoiMarkers(map: maplibregl.Map, markers: maplibregl.Marker[]) {
+  const markerSize = poiMarkerSizeForZoom(map.getZoom());
+  const symbolSize = Math.max(11, Math.round(markerSize * 0.58));
+  for (const marker of markers) {
+    const element = marker.getElement();
+    element.style.width = `${markerSize}px`;
+    element.style.height = `${markerSize}px`;
+    const symbol = element.querySelector("svg");
+    symbol?.setAttribute("width", String(symbolSize));
+    symbol?.setAttribute("height", String(symbolSize));
+  }
+}
+
 const DEFAULT_LAYERS: OverlayLayer[] = [
   {
     id: "score_marker",
@@ -271,7 +288,9 @@ export default function App() {
     const resize = () => {
       if (!cancelled && mapRef.current) map.resize();
     };
+    const resizeMarkers = () => resizePoiMarkers(map, poiMarkersRef.current);
     map.on("load", resize);
+    map.on("zoom", resizeMarkers);
     map.on("error", (e) => {
       const msg = e.error?.message || "Map failed to load tiles";
       if (/Cannot style non-existing layer/i.test(msg)) return;
@@ -292,6 +311,7 @@ export default function App() {
       ro.disconnect();
       window.removeEventListener("resize", resize);
       map.off("zoomend", syncAutomatic3D);
+      map.off("zoom", resizeMarkers);
       markerRef.current?.remove();
       markerRef.current = null;
       poiMarkersRef.current.forEach((marker) => marker.remove());
@@ -486,6 +506,7 @@ export default function App() {
         .addTo(map);
       poiMarkersRef.current.push(marker);
     }
+    resizePoiMarkers(map, poiMarkersRef.current);
 
     return () => {
       poiMarkersRef.current.forEach((marker) => marker.remove());

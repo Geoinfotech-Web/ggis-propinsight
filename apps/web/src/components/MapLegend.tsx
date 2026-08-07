@@ -39,7 +39,9 @@ export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) 
   const [collapsed, setCollapsed] = useState(collapsedByDefault);
   const dark = theme === "dark";
   const visibleOverlays = layers.filter(
-    (l) => l.enabled && l.id !== "land_use" && l.id !== "land_cover",
+    (layer) =>
+      layer.enabled &&
+      (layer.id === "score_marker" || layer.id === "flood_context"),
   );
   const visibleAmenityLegend = AMENITY_LEGEND.filter((item) =>
     layers.some((layer) => layer.id === item.id && layer.enabled),
