@@ -19,7 +19,12 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.flood.client import FloodStatus, GGISFloodClient, get_flood_client
+from app.flood.client import (
+    FloodStatus,
+    GGISFloodClient,
+    get_flood_client,
+    validated_risk_score,
+)
 from app.location_intelligence.accessibility import (
     nearest_road_distance_m,
     score_accessibility,
@@ -117,6 +122,7 @@ def domainscore_to_result(ds: DomainScore, status: str = "ok") -> DomainResult:
         score=ds.score,
         confidence=ds.confidence,
         status=status,  # type: ignore[arg-type]
+        included_in_fit=ds.score is not None,
         evidence=ds.indicators,
         note=ds.note,
     )
@@ -127,6 +133,7 @@ def _pending(domain: str, versions: dict[str, str]) -> DomainResult:
         score=None,
         confidence="Low",
         status="pending",
+        included_in_fit=False,
         note=pending_note(domain, versions),
     )
 
@@ -135,6 +142,7 @@ def _flood_evidence(fr: Any) -> dict[str, Any]:
     evidence: dict[str, Any] = {
         "risk_class": fr.risk_class,
         "risk_score": fr.risk_score,
+        "data_mode": getattr(fr, "data_mode", "live"),
         "model_version": fr.model_version,
         "data_currency": fr.data_currency,
         **(fr.factors or {}),
@@ -144,6 +152,12 @@ def _flood_evidence(fr: Any) -> dict[str, Any]:
     if fr.history_events:
         evidence["history_events"] = fr.history_events[:5]
     return evidence
+
+
+def _flood_rating(risk_class: Any) -> str | None:
+    if not isinstance(risk_class, str) or not risk_class.strip():
+        return None
+    return f"{risk_class.strip()} flood risk"
 
 
 async def _score_amenities(
@@ -162,6 +176,7 @@ async def _score_amenities(
             score=None,
             confidence="Low",
             status="degraded",
+            included_in_fit=False,
             evidence={},
             note="POI layer published but no amenities found near this location.",
         )
@@ -205,6 +220,7 @@ async def _score_feasibility(
             score=None,
             confidence="Low",
             status="degraded",
+            included_in_fit=False,
             evidence={},
             note="DEM layer published but no terrain samples near this location.",
         )
@@ -246,6 +262,7 @@ async def _score_security(
             score=None,
             confidence="Low",
             status="degraded",
+            included_in_fit=False,
             evidence={},
             note="No published incident aggregate covers this point.",
         )
@@ -330,6 +347,7 @@ async def analyze(
     versions = versions or {}
     persona_key = resolve_persona_key(req.profile)
     radius_m = req.radius_m
+    flood_data_mode = str(getattr(flood, "data_mode", "live"))
 
     layer_versions: dict[str, str] = dict(versions)
     cache_key = None
@@ -343,7 +361,9 @@ async def analyze(
             live_model = None
         if live_model:
             layer_versions["hazard"] = str(live_model)
-            cache_key = cache.make_key(persona_key, gh8, layer_versions, radius_m)
+            cache_key = cache.make_key(
+                persona_key, gh8, layer_versions, radius_m, flood_data_mode
+            )
             hit = await cache.get(cache_key)
             if hit is not None:
                 hit["cached"] = True
@@ -353,6 +373,7 @@ async def analyze(
 
     # --- Flood (live GGIS call, Tier 1) ---
     fr = await flood.risk(req.geometry.model_dump())
+    flood_data_mode = str(getattr(fr, "data_mode", flood_data_mode))
     if fr.model_version:
         layer_versions["hazard"] = fr.model_version
 
@@ -363,7 +384,9 @@ async def analyze(
         and fr.status is FloodStatus.OK
         and fr.model_version
     ):
-        resolved_key = cache.make_key(persona_key, gh8, layer_versions, radius_m)
+        resolved_key = cache.make_key(
+            persona_key, gh8, layer_versions, radius_m, flood_data_mode
+        )
         if resolved_key != cache_key:
             hit = await cache.get(resolved_key)
             if hit is not None:
@@ -380,21 +403,51 @@ async def analyze(
         except Exception:  # noqa: BLE001 — history is enrichment, never fail analyze
             fr.history_events = []
 
-    if fr.normalised is not None:
-        flood_score = round(100 * fr.normalised, 1)
+    hazard_fraction = validated_risk_score(fr.risk_score)
+    flood_is_demo = flood_data_mode == "mock"
+    flood_included_in_fit = (
+        fr.status is FloodStatus.OK and not flood_is_demo and hazard_fraction is not None
+    )
+    flood_suitability_fraction = (
+        1.0 - hazard_fraction if flood_included_in_fit and hazard_fraction is not None else None
+    )
+    flood_rating = _flood_rating(fr.risk_class)
+
+    if hazard_fraction is not None:
+        flood_score = round(100 * hazard_fraction, 1)
+        flood_status = (
+            "demo"
+            if flood_is_demo
+            else "degraded"
+            if fr.status is FloodStatus.DEGRADED
+            else "ok"
+        )
+        flood_note = fr.message
+        if flood_is_demo:
+            flood_note = "Demo flood data—do not rely on this result for a property decision."
         domains["flood"] = DomainResult(
             score=flood_score,
             confidence=fr.confidence or "Medium",
-            status="degraded" if fr.status is FloodStatus.DEGRADED else "ok",
+            status=flood_status,
+            score_direction="higher_is_worse",
+            rating=flood_rating,
+            included_in_fit=flood_included_in_fit,
             evidence=_flood_evidence(fr),
-            note=fr.message,
+            note=flood_note,
         )
     else:
+        flood_note = fr.message or "Flood hazard score is unavailable or invalid."
+        if flood_is_demo:
+            flood_note = "Demo flood data is unavailable and is not used in this report."
         domains["flood"] = DomainResult(
             score=None,
             confidence="Low",
-            status="degraded",
-            note=fr.message or "Flood domain temporarily unavailable",
+            status="demo" if flood_is_demo else "degraded",
+            score_direction="higher_is_worse",
+            rating=flood_rating,
+            included_in_fit=False,
+            evidence=_flood_evidence(fr),
+            note=flood_note,
         )
 
     # --- Resolve administrative context once (drives security + LocationInfo) ---
@@ -421,7 +474,7 @@ async def analyze(
     )
     domains["accessibility"] = await _score_accessibility(session, lon, lat, versions)
     domains["feasibility"] = await _score_feasibility(
-        session, lon, lat, versions, fr.normalised
+        session, lon, lat, versions, flood_suitability_fraction
     )
 
     # --- Tier 2 domains (most-local safe security aggregate, planning overlay) ---

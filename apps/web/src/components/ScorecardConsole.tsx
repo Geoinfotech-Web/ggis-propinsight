@@ -6,7 +6,7 @@ import type { Theme } from "../theme";
 import { RadiusControl } from "./RadiusControl";
 
 const DOMAIN_LABELS: Record<(typeof DOMAIN_ORDER)[number], string> = {
-  flood: "Flood",
+  flood: "Flood hazard",
   security: "Security",
   amenities: "Amenities",
   accessibility: "Accessibility",
@@ -17,7 +17,7 @@ const DOMAIN_LABELS: Record<(typeof DOMAIN_ORDER)[number], string> = {
 };
 
 const DOMAIN_KICKERS: Record<(typeof DOMAIN_ORDER)[number], string> = {
-  flood: "Hazard · GGIS Flood Watch",
+  flood: "Risk · GGIS Flood Watch",
   security: "Safety · local context",
   amenities: "Services · nearest POIs",
   accessibility: "Connectivity · roads & destinations",
@@ -59,7 +59,7 @@ const ACCESS_LABELS: Record<string, string> = {
 
 const FLOOD_LABELS: Record<string, string> = {
   risk_class: "Risk class",
-  risk_score: "Hazard score",
+  risk_score: "GGIS hazard score",
   elevation_m: "Elevation",
   dist_to_drainage_m: "Distance to drainage",
   flow_accumulation_pct: "Flow accumulation",
@@ -123,6 +123,56 @@ function scoreBarColor(score: number | null, status: DomainResult["status"]): st
   if (score >= 70) return "#0d9488";
   if (score >= 40) return "#ca8a04";
   return "#dc2626";
+}
+
+function floodHazardColor(result: DomainResult): string {
+  if (result.score === null || result.status === "pending") return "#94a3b8";
+  const rating = (result.rating ?? String(result.evidence?.risk_class ?? "")).toLowerCase();
+  if (rating.includes("very high") || rating.includes("high")) return "#dc2626";
+  if (rating.includes("moderate")) return "#ca8a04";
+  if (rating.includes("low")) return "#0d9488";
+  if (result.score >= 60) return "#dc2626";
+  if (result.score >= 40) return "#ca8a04";
+  return "#0d9488";
+}
+
+function floodRiskBadge(
+  result: DomainResult,
+  dark: boolean,
+): { label: string; classes: string } {
+  if (result.status === "pending") return qualityBadge(result.score, result.status, dark);
+  const label = result.rating ?? "Risk unavailable";
+  const color = floodHazardColor(result);
+  if (color === "#dc2626") {
+    return {
+      label,
+      classes: dark
+        ? "border-red-800/60 bg-red-950/40 text-red-300"
+        : "border-red-200 bg-red-50 text-red-700",
+    };
+  }
+  if (color === "#ca8a04") {
+    return {
+      label,
+      classes: dark
+        ? "border-amber-700/60 bg-amber-950/40 text-amber-300"
+        : "border-amber-200 bg-amber-50 text-amber-800",
+    };
+  }
+  if (color === "#0d9488") {
+    return {
+      label,
+      classes: dark
+        ? "border-teal-700/60 bg-teal-950/50 text-teal-300"
+        : "border-teal-200 bg-teal-50 text-teal-800",
+    };
+  }
+  return {
+    label,
+    classes: dark
+      ? "border-gray-700 bg-gray-900 text-gray-400"
+      : "border-slate-200 bg-slate-100 text-slate-600",
+  };
 }
 
 /**
@@ -220,6 +270,7 @@ function formatEvidenceValue(key: string, value: unknown): string {
     return JSON.stringify(value);
   }
   if (typeof value === "number") {
+    if (key === "risk_score") return `${(value * 100).toFixed(0)} / 100`;
     if (key.endsWith("_m") || key.includes("distance") || key.includes("elevation")) {
       return key.includes("elevation") ? `${value.toFixed(0)} m` : formatMetres(value);
     }
@@ -375,7 +426,10 @@ function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<
 
   const keys = preferred.filter((k) => k in evidence);
   for (const k of Object.keys(evidence)) {
-    if (!keys.includes(k) && !["history_events", "nearby", "listings", "listing_kind"].includes(k)) keys.push(k);
+    if (
+      !keys.includes(k) &&
+      !["history_events", "nearby", "listings", "listing_kind", "data_mode"].includes(k)
+    ) keys.push(k);
   }
 
   return keys.map((key) => ({
@@ -430,13 +484,7 @@ export function ScorecardConsole({
 }: Props) {
   const dark = theme === "dark";
   const personaDef = getPersona(persona);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    amenities: true,
-    accessibility: true,
-    flood: true,
-    feasibility: true,
-    market: true,
-  });
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const toggle = (id: string) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -455,6 +503,13 @@ export function ScorecardConsole({
   const showPlanningContext = ["investor", "developer"].includes(reportPersona);
   const showMarketListings = ["home_buyer", "tenant"].includes(
     reportPersona,
+  );
+  const overviewHighlights = (card?.highlights ?? []).slice(0, 3);
+  const suitabilityHighlights = overviewHighlights.filter(
+    (highlight) => highlight.tone === "positive",
+  );
+  const cautionHighlights = overviewHighlights.filter(
+    (highlight) => highlight.tone !== "positive",
   );
 
   return (
@@ -648,50 +703,57 @@ export function ScorecardConsole({
                     </p>
                   )}
                   <p className="text-[12px] font-medium leading-relaxed">{card.summary}</p>
-                  {isConsumerReport && card.highlights && card.highlights.length > 0 && (
+                  {isConsumerReport && overviewHighlights.length > 0 && (
                     <div
                       className={clsx(
                         "mt-2 space-y-2 border-t pt-2",
                         dark ? "border-teal-800/60" : "border-teal-200",
                       )}
                     >
-                      {card.highlights.slice(0, 3).map((highlight) => (
-                        <div key={highlight.domain} className="flex gap-2">
-                          <span
-                            className={clsx(
-                              "mt-1 h-2 w-2 shrink-0 rounded-full",
-                              highlight.tone === "positive"
-                                ? "bg-teal-500"
-                                : highlight.tone === "caution"
-                                  ? "bg-amber-500"
-                                  : "bg-slate-400",
-                            )}
-                            aria-hidden
-                          />
-                          <div>
+                      {[
+                        {
+                          title: "Why it could suit you",
+                          highlights: suitabilityHighlights,
+                          headingClass: dark ? "text-teal-300" : "text-teal-700",
+                          dotClass: "bg-teal-500",
+                        },
+                        {
+                          title: "Why it may not suit you",
+                          highlights: cautionHighlights,
+                          headingClass: dark ? "text-amber-300" : "text-amber-700",
+                          dotClass: "bg-amber-500",
+                        },
+                      ].map((group) =>
+                        group.highlights.length > 0 ? (
+                          <section key={group.title}>
                             <p
                               className={clsx(
-                                "text-[9px] font-semibold uppercase tracking-[0.1em]",
-                                highlight.tone === "positive"
-                                  ? dark ? "text-teal-300" : "text-teal-700"
-                                  : highlight.tone === "caution"
-                                    ? dark ? "text-amber-300" : "text-amber-700"
-                                    : dark ? "text-gray-400" : "text-slate-500",
+                                "mb-1 text-[9px] font-semibold uppercase tracking-[0.1em]",
+                                group.headingClass,
                               )}
                             >
-                              {highlight.tone === "positive"
-                                ? "Why it could suit you"
-                                : highlight.tone === "caution"
-                                  ? "Why it may not suit you"
-                                  : "Worth checking"}
+                              {group.title}
                             </p>
-                            <p className="text-[10px] leading-relaxed">
-                              <span className="font-semibold">{highlight.title}:</span>{" "}
-                              {highlight.text}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
+                            <div className="space-y-1.5">
+                              {group.highlights.map((highlight) => (
+                                <div key={highlight.domain} className="flex gap-2">
+                                  <span
+                                    className={clsx(
+                                      "mt-1 h-2 w-2 shrink-0 rounded-full",
+                                      group.dotClass,
+                                    )}
+                                    aria-hidden
+                                  />
+                                  <p className="text-[10px] leading-relaxed">
+                                    <span className="font-semibold">{highlight.title}:</span>{" "}
+                                    {highlight.text}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </section>
+                        ) : null,
+                      )}
                     </div>
                   )}
                 </div>
@@ -785,9 +847,10 @@ export function ScorecardConsole({
               {orderedDomains.map((d) => {
                 const r = card.domains[d];
                 if (!r) return null;
+                const isFlood = d === "flood";
                 const isOpen = expanded[d] ?? false;
                 const rows = evidenceRows(d, r.evidence ?? {});
-                const bar = scoreBarColor(r.score, r.status);
+                const bar = isFlood ? floodHazardColor(r) : scoreBarColor(r.score, r.status);
                 const highPriority = topDomains.has(d);
 
                 return (
@@ -818,7 +881,9 @@ export function ScorecardConsole({
                             {domainLabel(d)}
                           </h3>
                           {(() => {
-                            const badge = qualityBadge(r.score, r.status, dark);
+                            const badge = isFlood
+                              ? floodRiskBadge(r, dark)
+                              : qualityBadge(r.score, r.status, dark);
                             return (
                               <span
                                 className={clsx(
@@ -830,6 +895,18 @@ export function ScorecardConsole({
                               </span>
                             );
                           })()}
+                          {isFlood && r.status === "degraded" && (
+                            <span
+                              className={clsx(
+                                "rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+                                dark
+                                  ? "border-amber-700/60 bg-amber-950/40 text-amber-300"
+                                  : "border-amber-200 bg-amber-50 text-amber-800",
+                              )}
+                            >
+                              Limited data
+                            </span>
+                          )}
                           {highPriority && (
                             <span
                               className={clsx(
@@ -852,11 +929,32 @@ export function ScorecardConsole({
                             }}
                           />
                         </div>
+                        {isFlood && (
+                          <div
+                            className={clsx(
+                              "mt-1 flex justify-between text-[9px] font-medium",
+                              dark ? "text-gray-500" : "text-slate-400",
+                            )}
+                          >
+                            <span>Lower risk</span>
+                            <span>Higher risk</span>
+                          </div>
+                        )}
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="font-display text-2xl font-semibold tabular-nums leading-none">
                           {r.score !== null ? r.score.toFixed(0) : "—"}
                         </p>
+                        {isFlood && (
+                          <p
+                            className={clsx(
+                              "mt-1 text-[9px] font-semibold uppercase tracking-wide",
+                              dark ? "text-gray-400" : "text-slate-500",
+                            )}
+                          >
+                            Hazard / 100
+                          </p>
+                        )}
                         <p className={clsx("mt-1 text-[10px] uppercase tracking-wide", dark ? "text-gray-500" : "text-slate-400")}>
                           {isOpen ? "Hide" : "Details"}
                         </p>
@@ -865,7 +963,7 @@ export function ScorecardConsole({
 
                     {isOpen && (
                       <div className={clsx("border-t px-3 py-2.5", dark ? "border-gray-800" : "border-slate-100")}>
-                        {r.note && (
+                        {r.note && r.status !== "demo" && (
                           <p className={clsx("mb-2 text-xs leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
                             {r.note}
                           </p>

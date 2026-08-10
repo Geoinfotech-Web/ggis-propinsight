@@ -26,7 +26,7 @@ settings = get_settings()
 DEFAULT_TTL_SECONDS = 24 * 3600
 # Bump when the response composition or persona domain set changes so cached
 # scorecards cannot preserve an older report experience for up to 24 hours.
-REPORT_SCHEMA_VERSION = "v6"
+REPORT_SCHEMA_VERSION = "v7"
 
 
 class ScorecardCache:
@@ -40,12 +40,13 @@ class ScorecardCache:
         geohash8: str,
         layer_versions: dict[str, str],
         radius_m: int = 5_000,
+        flood_data_mode: str = "mock",
     ) -> str:
         canon = json.dumps(layer_versions, sort_keys=True, separators=(",", ":"))
         digest = hashlib.sha1(canon.encode()).hexdigest()[:12]  # noqa: S324 (cache key, not security)
         return (
             f"aia:scorecard:{REPORT_SCHEMA_VERSION}:{profile}:{geohash8}:"
-            f"r{radius_m}:{digest}"
+            f"r{radius_m}:flood-{flood_data_mode}:{digest}"
         )
 
     async def get(self, key: str) -> dict[str, Any] | None:

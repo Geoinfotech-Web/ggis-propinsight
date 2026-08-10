@@ -43,7 +43,10 @@ class AnalyzeRequest(BaseModel):
 class DomainResult(BaseModel):
     score: float | None
     confidence: str
-    status: Literal["ok", "degraded", "pending"] = "ok"
+    status: Literal["ok", "degraded", "pending", "demo"] = "ok"
+    score_direction: Literal["higher_is_better", "higher_is_worse"] = "higher_is_better"
+    rating: str | None = None
+    included_in_fit: bool = True
     evidence: dict[str, Any] = Field(default_factory=dict)
     note: str | None = None
 

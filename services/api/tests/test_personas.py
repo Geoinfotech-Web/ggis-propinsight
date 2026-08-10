@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from app.location_intelligence.personas import (
     PERSONAS,
     domain_priority,
+    domain_suitability_score,
     filter_domains_for_persona,
     fit_score,
     included_domains,
@@ -78,3 +79,29 @@ def test_fit_score_ignores_excluded_domain_even_if_present():
 def test_fit_score_none_when_no_scores():
     domains = {"flood": SimpleNamespace(score=None)}
     assert fit_score(domains, "tenant") is None
+
+
+def test_flood_hazard_is_inverted_for_fit():
+    domains = {
+        "flood": SimpleNamespace(
+            score=80.0,
+            score_direction="higher_is_worse",
+            included_in_fit=True,
+        ),
+        "amenities": SimpleNamespace(score=100.0),
+    }
+    # Equal home-buyer weights: flood suitability 20 and amenities 100 -> fit 60.
+    assert domain_suitability_score("flood", domains["flood"]) == 20.0
+    assert fit_score(domains, "home_buyer") == 60.0
+
+
+def test_excluded_domain_is_renormalised_out_of_fit():
+    domains = {
+        "flood": SimpleNamespace(
+            score=90.0,
+            score_direction="higher_is_worse",
+            included_in_fit=False,
+        ),
+        "amenities": SimpleNamespace(score=75.0),
+    }
+    assert fit_score(domains, "home_buyer") == 75.0

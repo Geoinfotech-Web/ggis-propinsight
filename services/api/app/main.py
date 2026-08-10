@@ -45,11 +45,19 @@ async def health() -> dict[str, str]:
 
 @meta.get("/v1/meta/flood")
 async def flood_meta() -> dict:
-    """Surface GGIS model version/coverage (verbatim) — proves the integration is live."""
+    """Surface the configured flood-data mode and upstream GGIS metadata."""
     try:
-        return {"status": "ok", "ggis": await get_flood_client().meta()}
+        return {
+            "status": "ok",
+            "data_mode": settings.ggis_flood_data_mode,
+            "ggis": await get_flood_client().meta(),
+        }
     except Exception as exc:  # noqa: BLE001 — degrade gracefully, never 500 the meta probe
-        return {"status": "degraded", "error": str(exc)}
+        return {
+            "status": "degraded",
+            "data_mode": settings.ggis_flood_data_mode,
+            "error": str(exc),
+        }
 
 
 @meta.get("/v1/meta/readiness")

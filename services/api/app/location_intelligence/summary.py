@@ -3,12 +3,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.location_intelligence.personas import domain_suitability_score
+
 # Shared 0..100 quality bands (align with the map legend + score-bar colours).
 STRONG = 70.0
 MODERATE = 40.0
 
 DOMAIN_WORDS: dict[str, str] = {
-    "flood": "flood safety",
+    "flood": "flood risk",
     "security": "safety",
     "amenities": "nearby amenities",
     "accessibility": "road access",
@@ -136,7 +138,7 @@ def _persona_phrase(persona_label: str, fit: float | None) -> str:
 def _scored_domains(domains: dict[str, Any]) -> list[tuple[str, float]]:
     scored: list[tuple[str, float]] = []
     for name, result in domains.items():
-        score = result.score if hasattr(result, "score") else result.get("score")
+        score = domain_suitability_score(name, result)
         if score is not None:
             scored.append((name, float(score)))
     return scored
@@ -171,7 +173,10 @@ def build_summary(
     best = max(scored, key=lambda item: item[1])
     worst = min(scored, key=lambda item: item[1])
 
-    parts = [phrase, f"strongest on {_word(best[0])}"]
+    strength = (
+        "lower flood risk" if best[0] == "flood" else f"strongest on {_word(best[0])}"
+    )
+    parts = [phrase, strength]
     if worst[0] != best[0] and worst[1] < STRONG:
         parts.append(f"watch {_word(worst[0])}")
     return " — ".join([parts[0], ", ".join(parts[1:])]) + "."
@@ -199,6 +204,14 @@ def _highlight_copy(domain: str, tone: str, persona_key: str) -> str:
             "caution": "The purchase price needs careful comparison before offering.",
         }[tone]
     return HIGHLIGHT_COPY[domain][tone]
+
+
+def _result_value(result: Any, key: str, default: Any = None) -> Any:
+    if hasattr(result, key):
+        return getattr(result, key)
+    if isinstance(result, dict):
+        return result.get(key, default)
+    return default
 
 
 def build_highlights(
@@ -230,11 +243,17 @@ def build_highlights(
             title = "Purchase prices"
         elif name == "market" and persona_key in {"investor", "developer"}:
             title = "Market value"
+        copy = _highlight_copy(name, tone, persona_key)
+        if name == "flood":
+            rating = _result_value(domains[name], "rating")
+            if isinstance(rating, str) and rating.strip():
+                copy = f"GGIS currently classifies this location as {rating.strip().lower()}."
+            title = "Flood risk"
         highlights.append(
             {
                 "domain": name,
                 "title": title,
-                "text": _highlight_copy(name, tone, persona_key),
+                "text": copy,
                 "tone": tone,
             }
         )

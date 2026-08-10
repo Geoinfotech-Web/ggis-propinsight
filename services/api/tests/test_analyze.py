@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from app.flood.client import FloodResult, FloodStatus
-from app.location_intelligence.schemas import AnalyzeRequest, GeoJSONGeometry
+from app.location_intelligence.schemas import AnalyzeRequest, DomainResult, GeoJSONGeometry
 from app.location_intelligence.service import analyze
 
 
@@ -13,6 +13,7 @@ class _StubFlood:
 
     def __init__(self, result: FloodResult) -> None:
         self._result = result
+        self.data_mode = result.data_mode
         self.calls = 0
         self.history_calls = 0
         self.meta_calls = 0
@@ -37,10 +38,15 @@ class _FakeCache:
         self.store: dict[str, dict] = {}
 
     @staticmethod
-    def make_key(profile, geohash8, layer_versions, radius_m=5_000):  # noqa: ANN001
+    def make_key(  # noqa: ANN001
+        profile, geohash8, layer_versions, radius_m=5_000, flood_data_mode="mock"
+    ):
         import json
 
-        return f"{profile}:{geohash8}:{radius_m}:{json.dumps(layer_versions, sort_keys=True)}"
+        return (
+            f"{profile}:{geohash8}:{radius_m}:{flood_data_mode}:"
+            f"{json.dumps(layer_versions, sort_keys=True)}"
+        )
 
     async def get(self, key):  # noqa: ANN001
         return self.store.get(key)
@@ -71,7 +77,10 @@ async def test_analyze_returns_consumer_domains_for_buyer():
     assert "tenure" not in res.domain_priority
     assert res.summary is not None
     assert "buying a home" in res.summary.lower()
-    assert res.domains["flood"].score == 20.0  # 100 * 0.2
+    assert res.domains["flood"].score == 78.0
+    assert res.domains["flood"].score_direction == "higher_is_worse"
+    assert res.domains["flood"].rating == "High flood risk"
+    assert res.domains["flood"].included_in_fit is True
     assert res.domains["flood"].status == "ok"
     assert res.layer_versions["hazard"] == "ggis-fw-2.3"
     assert "history_events" in res.domains["flood"].evidence
@@ -116,6 +125,7 @@ async def test_pending_domains_have_no_fabricated_score():
     res = await analyze(_req(), flood=_StubFlood(ok))  # type: ignore[arg-type]
     assert res.domains["amenities"].status == "pending"
     assert res.domains["amenities"].score is None
+    assert res.domains["amenities"].included_in_fit is False
     assert "poi" in (res.domains["amenities"].note or "")
 
 
@@ -124,6 +134,109 @@ def _ok_flood() -> FloodResult:
         status=FloodStatus.OK, risk_class="Low", risk_score=0.3, normalised=0.8,
         factors={}, model_version="ggis-fw-2.3", data_currency="2026-06-30", confidence="high",
     )
+
+
+@pytest.mark.parametrize(
+    ("risk_class", "risk_score", "expected"),
+    [
+        ("Very Low", 0.1, 10.0),
+        ("Low", 0.3, 30.0),
+        ("Moderate", 0.5, 50.0),
+        ("High", 0.78, 78.0),
+        ("Very High", 0.92, 92.0),
+    ],
+)
+@pytest.mark.asyncio
+async def test_flood_preserves_ggis_risk_class_and_hazard_score(
+    risk_class, risk_score, expected  # noqa: ANN001
+):
+    flood = FloodResult(
+        status=FloodStatus.OK,
+        risk_class=risk_class,
+        risk_score=risk_score,
+        normalised=1.0 - risk_score,
+        factors={},
+        model_version="ggis-fw-2.3",
+        data_currency="2026-06-30",
+        confidence="high",
+    )
+    res = await analyze(_req(), flood=_StubFlood(flood))  # type: ignore[arg-type]
+    result = res.domains["flood"]
+    assert result.score == expected
+    assert result.rating == f"{risk_class} flood risk"
+    assert result.score_direction == "higher_is_worse"
+
+
+@pytest.mark.parametrize("risk_score", [None, -0.1, 1.1, float("inf"), float("nan")])
+@pytest.mark.asyncio
+async def test_invalid_flood_hazard_score_is_not_invented(risk_score):  # noqa: ANN001
+    flood = FloodResult(
+        status=FloodStatus.OK,
+        risk_class="Low",
+        risk_score=risk_score,
+        normalised=0.8,
+        factors={},
+        model_version="ggis-fw-2.3",
+        data_currency="2026-06-30",
+        confidence="high",
+    )
+    res = await analyze(_req(), flood=_StubFlood(flood))  # type: ignore[arg-type]
+    result = res.domains["flood"]
+    assert result.score is None
+    assert result.status == "degraded"
+    assert result.included_in_fit is False
+
+
+@pytest.mark.asyncio
+async def test_mock_flood_is_demo_and_excluded_from_report_fit_and_highlights(monkeypatch):
+    captured: dict[str, float | None] = {}
+
+    async def fake_feasibility(session, lon, lat, versions, flood_normalised):  # noqa: ANN001
+        captured["flood_normalised"] = flood_normalised
+        return DomainResult(score=80.0, confidence="Medium")
+
+    monkeypatch.setattr(
+        "app.location_intelligence.service._score_feasibility",
+        fake_feasibility,
+    )
+    demo = FloodResult(
+        status=FloodStatus.OK,
+        risk_class="High",
+        risk_score=0.78,
+        normalised=0.22,
+        factors={},
+        model_version="ggis-fw-2.3",
+        data_currency="2026-06-30",
+        confidence="high",
+        data_mode="mock",
+    )
+    req = AnalyzeRequest(
+        geometry=GeoJSONGeometry(type="Point", coordinates=[7.3986, 8.9634]),
+        profile="developer",
+    )
+    res = await analyze(req, flood=_StubFlood(demo))  # type: ignore[arg-type]
+    result = res.domains["flood"]
+    assert result.status == "demo"
+    assert result.score == 78.0
+    assert result.included_in_fit is False
+    assert captured["flood_normalised"] is None
+    assert all(item.domain != "flood" for item in res.highlights)
+
+
+@pytest.mark.asyncio
+async def test_cache_separates_live_and_mock_flood_modes():
+    cache = _FakeCache()
+    live = _StubFlood(_ok_flood())
+    demo_result = _ok_flood()
+    demo_result.data_mode = "mock"
+    demo = _StubFlood(demo_result)
+
+    await analyze(_req(), flood=live, cache=cache)  # type: ignore[arg-type]
+    await analyze(_req(), flood=demo, cache=cache)  # type: ignore[arg-type]
+
+    assert live.calls == 1
+    assert demo.calls == 1
+    assert len(cache.store) == 2
 
 
 @pytest.mark.asyncio

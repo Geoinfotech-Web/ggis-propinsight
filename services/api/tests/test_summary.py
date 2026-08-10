@@ -5,8 +5,18 @@ from app.location_intelligence.summary import build_highlights, build_summary, q
 
 
 class _D:
-    def __init__(self, score):
+    def __init__(
+        self,
+        score,
+        *,
+        score_direction="higher_is_better",
+        included_in_fit=True,
+        rating=None,
+    ):
         self.score = score
+        self.score_direction = score_direction
+        self.included_in_fit = included_in_fit
+        self.rating = rating
 
 
 def test_quality_bands():
@@ -68,3 +78,34 @@ def test_tenant_market_highlight_mentions_full_rental_cost():
     )
     market = next(item for item in highlights if item["domain"] == "market")
     assert "rent and service charges" in market["text"].lower()
+
+
+def test_high_flood_hazard_is_a_caution_with_exact_risk_class():
+    highlights = build_highlights(
+        "home_buyer",
+        {
+            "flood": _D(
+                80,
+                score_direction="higher_is_worse",
+                rating="High flood risk",
+            ),
+            "amenities": _D(70),
+        },
+        ["flood", "amenities"],
+    )
+    flood = next(item for item in highlights if item["domain"] == "flood")
+    assert flood["tone"] == "caution"
+    assert flood["title"] == "Flood risk"
+    assert "high flood risk" in flood["text"].lower()
+
+
+def test_demo_flood_is_not_used_as_a_highlight():
+    highlights = build_highlights(
+        "tenant",
+        {
+            "flood": _D(10, included_in_fit=False, rating="Very Low flood risk"),
+            "amenities": _D(70),
+        },
+        ["flood", "amenities"],
+    )
+    assert all(item["domain"] != "flood" for item in highlights)

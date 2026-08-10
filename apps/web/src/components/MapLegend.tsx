@@ -33,11 +33,54 @@ type Props = {
   layers: OverlayLayer[];
   collapsedByDefault?: boolean;
   radiusKm?: number;
+  amenityCounts?: Record<string, number>;
+  securityCount?: number;
 };
 
+type ExpandableGroup = "amenities" | "land_use" | "land_cover";
+
+const GROUP_PREVIEW_SIZE = 4;
+
+function LegendMoreButton({
+  theme,
+  expanded,
+  hiddenCount,
+  onClick,
+}: {
+  theme: Theme;
+  expanded: boolean;
+  hiddenCount: number;
+  onClick: () => void;
+}) {
+  if (hiddenCount <= 0 && !expanded) return null;
+  const dark = theme === "dark";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        "mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide",
+        dark ? "text-sky-400 hover:text-sky-300" : "text-sky-700 hover:text-sky-900",
+      )}
+      aria-expanded={expanded}
+    >
+      {expanded ? `First ${GROUP_PREVIEW_SIZE}` : `More · ${hiddenCount}`}
+      {expanded ? <IconChevronUp size={11} /> : <IconChevronDown size={11} />}
+    </button>
+  );
+}
+
 /** Flood Watch FloodRiskLegend chrome — bottom-left collapsible legend. */
-export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm = 5 }: Props) {
+export function MapLegend({
+  theme,
+  layers,
+  collapsedByDefault = false,
+  radiusKm = 5,
+  amenityCounts,
+  securityCount,
+}: Props) {
   const [collapsed, setCollapsed] = useState(collapsedByDefault);
+  const [expandedGroup, setExpandedGroup] = useState<ExpandableGroup | null>(null);
   const dark = theme === "dark";
   const visibleOverlays = layers.filter(
     (layer) =>
@@ -50,11 +93,22 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
   const showSecurityCats = layers.some((l) => l.id === "security_poi" && l.enabled);
   const showLandUse = layers.some((l) => l.id === "land_use" && l.enabled);
   const showLandCover = layers.some((l) => l.id === "land_cover" && l.enabled);
+  const toggleGroup = (group: ExpandableGroup) =>
+    setExpandedGroup((current) => (current === group ? null : group));
+  const visibleAmenities = expandedGroup === "amenities"
+    ? visibleAmenityLegend.slice(GROUP_PREVIEW_SIZE)
+    : visibleAmenityLegend.slice(0, GROUP_PREVIEW_SIZE);
+  const visibleLandUse = expandedGroup === "land_use"
+    ? LAND_USE_LEGEND.slice(GROUP_PREVIEW_SIZE)
+    : LAND_USE_LEGEND.slice(0, GROUP_PREVIEW_SIZE);
+  const visibleLandCover = expandedGroup === "land_cover"
+    ? LAND_COVER_LEGEND.slice(GROUP_PREVIEW_SIZE)
+    : LAND_COVER_LEGEND.slice(0, GROUP_PREVIEW_SIZE);
 
   return (
     <div
       className={clsx(
-        "w-56 overflow-hidden rounded-lg border shadow-xl",
+        "w-[min(22rem,calc(100vw-6rem))] overflow-hidden rounded-lg border shadow-xl",
         dark ? "border-gray-700/80 bg-gray-900/90 backdrop-blur" : "border-slate-200 bg-white",
       )}
     >
@@ -75,23 +129,37 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
         >
           Legend
         </p>
-        <span className={dark ? "text-gray-500" : "text-slate-500"}>
-          {collapsed ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
+        <span className="flex items-center gap-2">
+          <span
+            className={clsx(
+              "flex items-center gap-1.5 text-[10px] font-semibold tabular-nums",
+              dark ? "text-sky-300" : "text-sky-700",
+            )}
+          >
+            <span
+              className="h-2.5 w-4 rounded-sm border-2 border-dashed border-sky-600 bg-sky-400/10"
+              aria-hidden
+            />
+            {radiusKm} km
+          </span>
+          <span className={dark ? "text-gray-500" : "text-slate-500"}>
+            {collapsed ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
+          </span>
         </span>
       </button>
 
       {!collapsed && (
-        <div className="max-h-[min(40vh,16rem)] space-y-3.5 overflow-y-auto p-3">
-          <div>
+        <div className="grid grid-cols-2 items-start gap-x-3 gap-y-2 p-3">
+          <div className="col-span-2">
             <p
               className={clsx(
                 "mb-1.5 text-[10px] font-semibold uppercase tracking-widest",
                 dark ? "text-gray-500" : "text-slate-500",
               )}
             >
-              Domain score
+              Suitability scores
             </p>
-            <div className="space-y-1.5">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
               {SCORE_LEGEND.map((item) => (
                 <div key={item.label} className="flex items-center gap-2">
                   <span
@@ -110,6 +178,14 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
                 </div>
               ))}
             </div>
+            <p
+              className={clsx(
+                "mt-1.5 text-[9px] leading-snug",
+                dark ? "text-sky-300" : "text-sky-800",
+              )}
+            >
+              Flood uses a hazard score: higher means greater risk.
+            </p>
           </div>
 
           {visibleAmenityLegend.length > 0 && (
@@ -122,21 +198,32 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
               >
                 Amenities ({radiusKm} km)
               </p>
-              <div className="space-y-1.5">
-                {visibleAmenityLegend.map((item) => (
-                  <div key={item.id} className="flex items-center gap-2">
-                    <PoiSymbol category={item.id.replace("_poi", "")} color={item.color} size={20} />
-                    <span
-                      className={clsx(
-                        "text-[11px] font-medium",
-                        dark ? "text-gray-200" : "text-slate-800",
-                      )}
-                    >
-                      {item.label}
-                    </span>
-                  </div>
-                ))}
+              <div className="space-y-1">
+                {visibleAmenities.map((item) => {
+                  const category = item.id.replace("_poi", "");
+                  const count = amenityCounts?.[category];
+                  return (
+                    <div key={item.id} className="flex items-center gap-2">
+                      <PoiSymbol category={category} color={item.color} size={20} />
+                      <span
+                        className={clsx(
+                          "text-[11px] font-medium",
+                          dark ? "text-gray-200" : "text-slate-800",
+                        )}
+                      >
+                        {item.label}
+                        {typeof count === "number" && ` · ${count}`}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
+              <LegendMoreButton
+                theme={theme}
+                expanded={expandedGroup === "amenities"}
+                hiddenCount={visibleAmenityLegend.length - GROUP_PREVIEW_SIZE}
+                onClick={() => toggleGroup("amenities")}
+              />
             </div>
           )}
 
@@ -150,7 +237,7 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
               >
                 Security ({radiusKm} km)
               </p>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {SECURITY_LEGEND.map((item) => (
                   <div key={item.id} className="flex items-center gap-2">
                     <PoiSymbol category={item.id} color={item.color} size={20} />
@@ -161,6 +248,7 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
                       )}
                     >
                       {item.label}
+                      {typeof securityCount === "number" && ` · ${securityCount}`}
                     </span>
                   </div>
                 ))}
@@ -178,8 +266,8 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
               >
                 Land use (reference)
               </p>
-              <div className="space-y-1.5">
-                {LAND_USE_LEGEND.map(([category, label]) => (
+              <div className="space-y-1">
+                {visibleLandUse.map(([category, label]) => (
                   <div key={category} className="flex items-center gap-2">
                     <span
                       className="h-3 w-3 shrink-0 rounded-sm border border-black/10"
@@ -197,13 +285,19 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
                   </div>
                 ))}
               </div>
+              <LegendMoreButton
+                theme={theme}
+                expanded={expandedGroup === "land_use"}
+                hiddenCount={LAND_USE_LEGEND.length - GROUP_PREVIEW_SIZE}
+                onClick={() => toggleGroup("land_use")}
+              />
               <p
                 className={clsx(
                   "mt-2 text-[9px] leading-snug",
                   dark ? "text-amber-300" : "text-amber-800",
                 )}
               >
-                Open mapped context—not official AGIS zoning.
+                Reference only · verify with AGIS/FCTA.
               </p>
             </div>
           )}
@@ -218,8 +312,8 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
               >
                 Observed land cover · FCT
               </p>
-              <div className="space-y-1.5">
-                {LAND_COVER_LEGEND.map(([color, label]) => (
+              <div className="space-y-1">
+                {visibleLandCover.map(([color, label]) => (
                   <div key={label} className="flex items-center gap-2">
                     <span
                       className="h-3 w-3 shrink-0 rounded-sm border border-black/10"
@@ -237,13 +331,19 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
                   </div>
                 ))}
               </div>
+              <LegendMoreButton
+                theme={theme}
+                expanded={expandedGroup === "land_cover"}
+                hiddenCount={LAND_COVER_LEGEND.length - GROUP_PREVIEW_SIZE}
+                onClick={() => toggleGroup("land_cover")}
+              />
               <p
                 className={clsx(
                   "mt-2 text-[9px] leading-snug",
                   dark ? "text-sky-300" : "text-sky-800",
                 )}
               >
-                Satellite-observed cover—not planned or permitted use.
+                Observed cover · not zoning.
               </p>
             </div>
           )}
@@ -258,7 +358,7 @@ export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm 
               >
                 Overlays
               </p>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {visibleOverlays.map((layer) => (
                   <div key={layer.id} className="flex items-center gap-2">
                     {layer.symbol ? (

@@ -89,10 +89,12 @@ python -m pytest -q
 
 ## GGIS Flood Watch integration
 
-AIA never re-derives flood risk locally (TDD §5.3). The flood domain is served live
-from GGIS Flood Watch; if GGIS is unreachable the domain **degrades gracefully** to a
-timestamped last-known class (or "temporarily unavailable") and the rest of the
-scorecard still returns. Set `GGIS_FLOOD_*` in `.env`.
+AIA never re-derives flood risk locally (TDD §5.3). Set
+`GGIS_FLOOD_DATA_MODE=live` only for a verified GGIS Flood Watch endpoint. Local
+Docker uses `mock`; its generated flood values are labelled as demo evidence and are
+excluded from fit scores, highlights, and feasibility. If a live service is
+unreachable, flood degrades to timestamped last-known evidence (or temporarily
+unavailable) while the rest of the scorecard still returns.
 
 ## Status
 

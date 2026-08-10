@@ -129,6 +129,26 @@ def filter_domains_for_persona(
     return {k: v for k, v in domains.items() if k in allowed}
 
 
+def _result_value(result: Any, key: str, default: Any = None) -> Any:
+    if hasattr(result, key):
+        return getattr(result, key)
+    if isinstance(result, dict):
+        return result.get(key, default)
+    return default
+
+
+def domain_suitability_score(domain: str, result: Any) -> float | None:
+    """Translate a domain's public score into the higher-is-better fit scale."""
+    if not bool(_result_value(result, "included_in_fit", True)):
+        return None
+    score = _result_value(result, "score")
+    if score is None:
+        return None
+    numeric = float(score)
+    direction = _result_value(result, "score_direction", "higher_is_better")
+    return 100.0 - numeric if direction == "higher_is_worse" else numeric
+
+
 def fit_score(
     domains: dict[str, Any],
     profile: str | None,
@@ -144,7 +164,7 @@ def fit_score(
         result = domains.get(domain)
         if result is None:
             continue
-        score = result.score if hasattr(result, "score") else result.get("score")
+        score = domain_suitability_score(domain, result)
         if score is None:
             continue
         present.append((float(weight), float(score)))

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,6 +30,7 @@ class Settings(BaseSettings):
     ggis_flood_api_key: str = "dev-key"
     ggis_flood_hmac_secret: str = "dev-secret"
     ggis_flood_timeout_ms: int = 800
+    ggis_flood_data_mode: Literal["mock", "live"] = "mock"
 
     # Auth
     jwt_secret: str = "change-me-dev-only"

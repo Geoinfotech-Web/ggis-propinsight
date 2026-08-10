@@ -183,6 +183,16 @@ function nearbyTotalFromScorecard(card: Scorecard | null): number {
   );
 }
 
+function nearbyCountsFromScorecard(card: Scorecard | null): Record<string, number> | undefined {
+  const counts = card?.domains.amenities?.evidence.nearby_counts;
+  if (!counts || typeof counts !== "object" || Array.isArray(counts)) return undefined;
+  return Object.fromEntries(
+    Object.entries(counts).filter((entry): entry is [string, number] =>
+      typeof entry[1] === "number",
+    ),
+  );
+}
+
 export default function App() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -727,6 +737,16 @@ export default function App() {
   const displayRadiusKm = candidate ? setupRadiusKm : analysisRadiusKm;
   const nearbyAmenities = nearbyFromScorecard(card?.domains.amenities?.evidence);
   const nearbyAmenityTotal = nearbyTotalFromScorecard(card) || nearbyAmenities.length;
+  const legendCountsAreCurrent =
+    !candidate && card?.analysis_radius_m === analysisRadiusKm * 1_000;
+  const legendAmenityCounts = legendCountsAreCurrent
+    ? nearbyCountsFromScorecard(card)
+    : undefined;
+  const securityCountValue = card?.domains.security?.evidence.nearby_count;
+  const legendSecurityCount =
+    legendCountsAreCurrent && typeof securityCountValue === "number"
+      ? securityCountValue
+      : undefined;
   const anyAmenityLayerEnabled = AMENITY_LAYER_IDS.some((id) => layerEnabled(id));
 
   const focusNearby = (item: NearbyPoiItem) => {
@@ -907,7 +927,13 @@ export default function App() {
             )}
           >
             <div className="pointer-events-auto">
-              <MapLegend theme={theme} layers={layers} radiusKm={displayRadiusKm} />
+              <MapLegend
+                theme={theme}
+                layers={layers}
+                radiusKm={displayRadiusKm}
+                amenityCounts={legendAmenityCounts}
+                securityCount={legendSecurityCount}
+              />
             </div>
           </div>
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -30,16 +31,6 @@ import httpx
 from app.config import get_settings
 
 settings = get_settings()
-
-# Map GGIS risk class -> normalised [0,1] domain input (inverted: high risk = low score).
-RISK_CLASS_TO_SCORE: dict[str, float] = {
-    "Very Low": 1.0,
-    "Low": 0.8,
-    "Moderate": 0.5,
-    "High": 0.2,
-    "Very High": 0.0,
-}
-
 
 class FloodStatus(StrEnum):
     OK = "ok"
@@ -60,6 +51,17 @@ class FloodResult:
     history_events: list[dict[str, Any]] = field(default_factory=list)
     stale: bool = False                 # True when served from cache during degradation
     message: str | None = None
+    data_mode: str = "live"
+
+
+def validated_risk_score(value: Any) -> float | None:
+    """Return the authoritative GGIS 0..1 hazard score when it is usable."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    score = float(value)
+    if not math.isfinite(score) or score < 0.0 or score > 1.0:
+        return None
+    return score
 
 
 def _sign(method: str, path: str, body: bytes, ts: str) -> str:
@@ -83,6 +85,7 @@ class GGISFloodClient:
     def __init__(self, base_url: str | None = None, timeout_ms: int | None = None) -> None:
         self.base_url = (base_url or settings.ggis_flood_base_url).rstrip("/")
         self.timeout = (timeout_ms or settings.ggis_flood_timeout_ms) / 1000.0
+        self.data_mode = settings.ggis_flood_data_mode
 
     async def risk(
         self, geometry: dict[str, Any], last_known: FloodResult | None = None
@@ -101,19 +104,21 @@ class GGISFloodClient:
             return self._degrade(last_known, str(exc))
 
         risk_class = data.get("risk_class")
+        risk_score = validated_risk_score(data.get("risk_score"))
         last_event = data.get("last_event")
         if not isinstance(last_event, dict):
             last_event = None
         return FloodResult(
             status=FloodStatus.OK,
             risk_class=risk_class,
-            risk_score=data.get("risk_score"),
-            normalised=RISK_CLASS_TO_SCORE.get(risk_class or "", None),
+            risk_score=risk_score,
+            normalised=None if risk_score is None else 1.0 - risk_score,
             factors=data.get("factors", {}),
             model_version=data.get("model_version"),
             data_currency=data.get("data_currency"),
             confidence=data.get("confidence"),
             last_event=last_event,
+            data_mode=self.data_mode,
         )
 
     async def history(
@@ -138,8 +143,7 @@ class GGISFloodClient:
         events = data.get("events", [])
         return events if isinstance(events, list) else []
 
-    @staticmethod
-    def _degrade(last_known: FloodResult | None, reason: str) -> FloodResult:
+    def _degrade(self, last_known: FloodResult | None, reason: str) -> FloodResult:
         if last_known is not None:
             return FloodResult(
                 status=FloodStatus.DEGRADED,
@@ -154,6 +158,7 @@ class GGISFloodClient:
                 history_events=list(last_known.history_events),
                 stale=True,
                 message=f"GGIS unreachable; serving last-known class. ({reason})",
+                data_mode=last_known.data_mode,
             )
         return FloodResult(
             status=FloodStatus.DEGRADED,
@@ -166,6 +171,7 @@ class GGISFloodClient:
             confidence=None,
             stale=True,
             message=f"Flood domain temporarily unavailable. ({reason})",
+            data_mode=self.data_mode,
         )
 
     async def meta(self) -> dict[str, Any]:

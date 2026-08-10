@@ -3,7 +3,10 @@
 export type DomainResult = {
   score: number | null;
   confidence: string;
-  status: "ok" | "degraded" | "pending";
+  status: "ok" | "degraded" | "pending" | "demo";
+  score_direction: "higher_is_better" | "higher_is_worse";
+  rating: string | null;
+  included_in_fit: boolean;
   evidence: Record<string, unknown>;
   note: string | null;
 };
