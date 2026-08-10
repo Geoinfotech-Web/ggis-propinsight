@@ -321,7 +321,11 @@ async def incidents_for_location(
 
 
 async def nearest_police_distance_m(
-    session: AsyncSession, lon: float, lat: float
+    session: AsyncSession,
+    lon: float,
+    lat: float,
+    *,
+    radius_m: float = POLICE_D_MAX,
 ) -> float | None:
     """Nearest police/security outpost (POI category 'police')."""
     exists = await session.execute(text("SELECT to_regclass('public.poi') IS NOT NULL AS ok"))
@@ -345,7 +349,7 @@ async def nearest_police_distance_m(
             LIMIT 1
             """
         ),
-        {"lon": lon, "lat": lat, "radius_m": POLICE_D_MAX},
+        {"lon": lon, "lat": lat, "radius_m": radius_m},
     )
     row = result.first()
     return float(row.distance_m) if row else None

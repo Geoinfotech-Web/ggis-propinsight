@@ -8,6 +8,7 @@ type Props = {
   theme?: Theme;
   size?: "md" | "lg";
   placeholder?: string;
+  resetKey?: number;
   onResult: (hit: PlaceHit) => void;
 };
 
@@ -16,6 +17,7 @@ export function SearchBar({
   theme = "light",
   size = "md",
   placeholder = "Search a place, district, or landmark…",
+  resetKey = 0,
   onResult,
 }: Props) {
   const dark = theme === "dark";
@@ -26,6 +28,14 @@ export function SearchBar({
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    abortRef.current?.abort();
+    setQuery("");
+    setResults([]);
+    setOpen(false);
+    setLoading(false);
+  }, [resetKey]);
 
   useEffect(() => {
     abortRef.current?.abort();

@@ -32,10 +32,11 @@ type Props = {
   theme: Theme;
   layers: OverlayLayer[];
   collapsedByDefault?: boolean;
+  radiusKm?: number;
 };
 
 /** Flood Watch FloodRiskLegend chrome — bottom-left collapsible legend. */
-export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) {
+export function MapLegend({ theme, layers, collapsedByDefault = false, radiusKm = 5 }: Props) {
   const [collapsed, setCollapsed] = useState(collapsedByDefault);
   const dark = theme === "dark";
   const visibleOverlays = layers.filter(
@@ -119,7 +120,7 @@ export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) 
                   dark ? "text-gray-500" : "text-slate-500",
                 )}
               >
-                Amenities (5 km)
+                Amenities ({radiusKm} km)
               </p>
               <div className="space-y-1.5">
                 {visibleAmenityLegend.map((item) => (
@@ -147,7 +148,7 @@ export function MapLegend({ theme, layers, collapsedByDefault = false }: Props) 
                   dark ? "text-gray-500" : "text-slate-500",
                 )}
               >
-                Security (5 km)
+                Security ({radiusKm} km)
               </p>
               <div className="space-y-1.5">
                 {SECURITY_LEGEND.map((item) => (

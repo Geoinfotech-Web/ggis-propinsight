@@ -153,6 +153,7 @@ async def pois_within_radius(
                 ) AS distance_m,
                 ST_X(geom::geometry) AS lon,
                 ST_Y(geom::geometry) AS lat,
+                COUNT(*) OVER (PARTITION BY category) AS total_count,
                 ROW_NUMBER() OVER (
                   PARTITION BY category
                   ORDER BY geom <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
@@ -165,7 +166,7 @@ async def pois_within_radius(
                   :radius_m
                 )
             )
-            SELECT category, name, distance_m, lon, lat
+            SELECT category, name, distance_m, lon, lat, total_count
             FROM ranked
             WHERE rn <= :limit_per_category
             ORDER BY category, distance_m
@@ -186,6 +187,7 @@ async def pois_within_radius(
             "distance_m": round(float(row.distance_m), 1),
             "lon": float(row.lon),
             "lat": float(row.lat),
+            "total_count": int(row.total_count),
         }
         for row in result
     ]

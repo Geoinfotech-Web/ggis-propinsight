@@ -69,6 +69,7 @@ export type Scorecard = {
     planning_status: "official" | "mapped_reference" | "observed_cover_only" | "unmapped";
   };
   domains: Record<string, DomainResult>;
+  analysis_radius_m: number;
   layer_versions: Record<string, string>;
   scoring_profile: string;
   cached: boolean;
@@ -99,13 +100,17 @@ export async function analyzePoint(
   lng: number,
   lat: number,
   profile = "home_buyer",
+  radiusM = 5_000,
+  signal?: AbortSignal,
 ): Promise<Scorecard> {
   const res = await fetch("/v1/locations/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal,
     body: JSON.stringify({
       geometry: { type: "Point", coordinates: [lng, lat] },
       profile,
+      radius_m: radiusM,
     }),
   });
   if (!res.ok) throw new Error(`analyze failed: ${res.status}`);

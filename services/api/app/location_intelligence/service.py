@@ -147,12 +147,16 @@ def _flood_evidence(fr: Any) -> dict[str, Any]:
 
 
 async def _score_amenities(
-    session: AsyncSession | None, lon: float, lat: float, versions: dict[str, str]
+    session: AsyncSession | None,
+    lon: float,
+    lat: float,
+    versions: dict[str, str],
+    radius_m: int,
 ) -> DomainResult:
     required = REQUIRED_LAYERS["amenities"]
     if not layers_ready(versions, required) or session is None:
         return _pending("amenities", versions)
-    nearest = await nearest_pois(session, lon, lat)
+    nearest = await nearest_pois(session, lon, lat, radius_m=radius_m)
     if all(v is None for v in nearest.values()):
         return DomainResult(
             score=None,
@@ -162,9 +166,13 @@ async def _score_amenities(
             note="POI layer published but no amenities found near this location.",
         )
     result = domainscore_to_result(score_amenities(nearest), status="ok")
-    nearby = await pois_within_radius(session, lon, lat)
+    nearby = await pois_within_radius(session, lon, lat, radius_m=radius_m)
     if nearby:
         result.evidence["nearby"] = nearby
+        result.evidence["nearby_counts"] = {
+            item["category"]: item["total_count"] for item in nearby
+        }
+    result.evidence["coverage_radius_m"] = radius_m
     return result
 
 
@@ -219,6 +227,7 @@ async def _score_security(
     versions: dict[str, str],
     district: dict[str, Any] | None,
     ward: dict[str, Any] | None,
+    radius_m: int,
 ) -> DomainResult:
     required = REQUIRED_LAYERS["security"]
     if not layers_ready(versions, required) or session is None:
@@ -228,7 +237,7 @@ async def _score_security(
         lon,
         lat,
         categories=("police",),
-        radius_m=5000.0,
+        radius_m=radius_m,
     )
     # Incident totals require at least the district fallback; local police POIs
     # remain useful but are not enough to imply a local incident rate.
@@ -242,13 +251,20 @@ async def _score_security(
         )
         if nearby_police:
             result.evidence["nearby"] = nearby_police
+            result.evidence["nearby_count"] = nearby_police[0]["total_count"]
+        result.evidence["coverage_radius_m"] = radius_m
         return result
     incidents = await incidents_for_location(
         session,
         district["id"],
         ward["id"] if ward else None,
     )
-    police_m = await nearest_police_distance_m(session, lon, lat)
+    police_m = await nearest_police_distance_m(
+        session,
+        lon,
+        lat,
+        radius_m=radius_m,
+    )
     ds = score_security(
         incident_total=None if incidents is None else incidents["total"],
         police_distance_m=police_m,
@@ -264,6 +280,8 @@ async def _score_security(
     result = domainscore_to_result(ds, status="ok")
     if nearby_police:
         result.evidence["nearby"] = nearby_police
+        result.evidence["nearby_count"] = nearby_police[0]["total_count"]
+    result.evidence["coverage_radius_m"] = radius_m
     return result
 
 
@@ -283,12 +301,18 @@ async def _score_market(
     lat: float,
     versions: dict[str, str],
     persona: str,
+    radius_m: int,
 ) -> DomainResult:
     required = REQUIRED_LAYERS["market"]
     if not layers_ready(versions, required) or session is None:
         return _pending("market", versions)
-    samples, baselines = await market_samples_for_point(session, lon, lat)
-    ds = score_market(samples, baselines, persona=persona)
+    samples, baselines = await market_samples_for_point(
+        session,
+        lon,
+        lat,
+        radius_m=radius_m,
+    )
+    ds = score_market(samples, baselines, persona=persona, radius_m=radius_m)
     return domainscore_to_result(ds, status="ok" if ds.score is not None else "degraded")
 
 
@@ -305,6 +329,7 @@ async def analyze(
     gh8 = _geohash8(lon, lat)
     versions = versions or {}
     persona_key = resolve_persona_key(req.profile)
+    radius_m = req.radius_m
 
     layer_versions: dict[str, str] = dict(versions)
     cache_key = None
@@ -318,7 +343,7 @@ async def analyze(
             live_model = None
         if live_model:
             layer_versions["hazard"] = str(live_model)
-            cache_key = cache.make_key(persona_key, gh8, layer_versions)
+            cache_key = cache.make_key(persona_key, gh8, layer_versions, radius_m)
             hit = await cache.get(cache_key)
             if hit is not None:
                 hit["cached"] = True
@@ -338,7 +363,7 @@ async def analyze(
         and fr.status is FloodStatus.OK
         and fr.model_version
     ):
-        resolved_key = cache.make_key(persona_key, gh8, layer_versions)
+        resolved_key = cache.make_key(persona_key, gh8, layer_versions, radius_m)
         if resolved_key != cache_key:
             hit = await cache.get(resolved_key)
             if hit is not None:
@@ -387,7 +412,13 @@ async def analyze(
         planning_status = "unmapped"
 
     # --- Tier-1 domains gated by published ETL layers ---
-    domains["amenities"] = await _score_amenities(session, lon, lat, versions)
+    domains["amenities"] = await _score_amenities(
+        session,
+        lon,
+        lat,
+        versions,
+        radius_m,
+    )
     domains["accessibility"] = await _score_accessibility(session, lon, lat, versions)
     domains["feasibility"] = await _score_feasibility(
         session, lon, lat, versions, fr.normalised
@@ -395,10 +426,17 @@ async def analyze(
 
     # --- Tier 2 domains (most-local safe security aggregate, planning overlay) ---
     domains["security"] = await _score_security(
-        session, lon, lat, versions, district, ward
+        session, lon, lat, versions, district, ward, radius_m
     )
     domains["tenure"] = await _score_tenure(session, lon, lat, versions)
-    domains["market"] = await _score_market(session, lon, lat, versions, persona_key)
+    domains["market"] = await _score_market(
+        session,
+        lon,
+        lat,
+        versions,
+        persona_key,
+        radius_m,
+    )
 
     for d in LATER_DOMAINS:
         domains[d] = _pending(d, versions)
@@ -420,6 +458,7 @@ async def analyze(
             planning_status=planning_status,
         ),
         domains=report_domains,
+        analysis_radius_m=radius_m,
         layer_versions=layer_versions,
         scoring_profile=persona_key,
         cached=False,

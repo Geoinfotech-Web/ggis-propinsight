@@ -14,6 +14,7 @@ type Props = {
   locating?: boolean;
   persona: PersonaKey;
   onPersonaChange: (key: PersonaKey) => void;
+  searchResetKey?: number;
 };
 
 /**
@@ -28,6 +29,7 @@ export function AppHeader({
   locating,
   persona,
   onPersonaChange,
+  searchResetKey,
 }: Props) {
   const dark = theme === "dark";
   const [geoBusy, setGeoBusy] = useState(false);
@@ -125,6 +127,7 @@ export function AppHeader({
               <SearchBar
                 theme={theme}
                 size="md"
+                resetKey={searchResetKey}
                 placeholder="Search a place, district, or landmark…"
                 onResult={(hit) => onSelectPlace(hit.lon, hit.lat, hit.label)}
               />
@@ -168,6 +171,7 @@ export function AppHeader({
             <SearchBar
               theme={theme}
               size="md"
+              resetKey={searchResetKey}
               placeholder="Search place or district…"
               onResult={(hit) => onSelectPlace(hit.lon, hit.lat, hit.label)}
             />

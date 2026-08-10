@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { DOMAIN_ORDER, type DomainResult, type Scorecard } from "../api";
 import { getPersona, type PersonaKey } from "../lib/personas";
 import type { Theme } from "../theme";
+import { RadiusControl } from "./RadiusControl";
 
 const DOMAIN_LABELS: Record<(typeof DOMAIN_ORDER)[number], string> = {
   flood: "Flood",
@@ -35,6 +36,17 @@ const AMENITY_LABELS: Record<string, string> = {
   market: "Market",
   bank: "Bank",
   fuel: "Fuel station",
+};
+
+const AMENITY_COUNT_LABELS: Record<string, string> = {
+  school: "schools",
+  hospital: "hospitals / clinics",
+  water: "water points",
+  power: "power facilities",
+  isp: "internet providers",
+  market: "markets",
+  bank: "banks",
+  fuel: "fuel stations",
 };
 
 const ACCESS_LABELS: Record<string, string> = {
@@ -72,6 +84,8 @@ const SECURITY_LABELS: Record<string, string> = {
   nearest_police: "Nearest police",
   coverage: "Based on",
   data_source: "Incident source",
+  nearby_count: "Police locations in radius",
+  coverage_radius_m: "Coverage radius",
 };
 
 const TENURE_LABELS: Record<string, string> = {
@@ -95,6 +109,15 @@ const MARKET_LABELS: Record<string, string> = {
   as_of: "Latest observation",
   method: "Method",
 };
+
+function formatNearbyCounts(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "—";
+  return Object.entries(value as Record<string, unknown>)
+    .filter(([, count]) => typeof count === "number")
+    .map(([category, count]) => `${count} ${AMENITY_COUNT_LABELS[category] ?? category}`)
+    .join(" · ");
+}
+
 function scoreBarColor(score: number | null, status: DomainResult["status"]): string {
   if (status === "pending" || score === null) return "#94a3b8";
   if (score >= 70) return "#0d9488";
@@ -159,6 +182,7 @@ function formatMetres(m: number): string {
 
 function formatEvidenceValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
+  if (key === "nearby_counts") return formatNearbyCounts(value);
   if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, unknown>;
     if (typeof obj.min === "number" && typeof obj.max === "number" && typeof obj.unit === "string") {
@@ -206,7 +230,11 @@ function formatEvidenceValue(key: string, value: unknown): string {
 }
 
 function labelFor(domain: string, key: string): string {
-  if (domain === "amenities") return AMENITY_LABELS[key] ?? key.replace(/_/g, " ");
+  if (domain === "amenities") {
+    if (key === "nearby_counts") return "Places in radius";
+    if (key === "coverage_radius_m") return "Coverage radius";
+    return AMENITY_LABELS[key] ?? key.replace(/_/g, " ");
+  }
   if (domain === "accessibility") return ACCESS_LABELS[key] ?? key.replace(/_/g, " ");
   if (domain === "flood") return FLOOD_LABELS[key] ?? key.replace(/_/g, " ");
   if (domain === "feasibility") return FEASIBILITY_LABELS[key] ?? key.replace(/_/g, " ");
@@ -365,7 +393,13 @@ type Props = {
   placeLabel?: string | null;
   persona?: PersonaKey;
   onClose?: () => void;
+  onReset?: () => void;
   onViewNearbyList?: () => void;
+  radiusKm?: number;
+  radiusControlIdPrefix?: string;
+  updatingMessage?: string | null;
+  onRadiusChange?: (radiusKm: number) => void;
+  onEditAnalysis?: () => void;
 };
 
 const PREVIEW_PER_CATEGORY = 2;
@@ -386,7 +420,13 @@ export function ScorecardConsole({
   placeLabel,
   persona = "home_buyer",
   onClose,
+  onReset,
   onViewNearbyList,
+  radiusKm = 5,
+  radiusControlIdPrefix = "scorecard",
+  updatingMessage,
+  onRadiusChange,
+  onEditAnalysis,
 }: Props) {
   const dark = theme === "dark";
   const personaDef = getPersona(persona);
@@ -437,18 +477,40 @@ export function ScorecardConsole({
             {card?.persona?.blurb ?? personaDef.blurb}
           </p>
         </div>
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className={clsx(
-              "rounded-lg border px-2 py-1 text-xs font-semibold sm:hidden",
-              dark ? "border-gray-700 text-gray-300" : "border-slate-200 text-slate-600",
-            )}
-          >
-            Close
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {onReset && (card || loading || error || placeLabel) && (
+            <button
+              type="button"
+              onClick={onReset}
+              aria-label="Reset location analysis"
+              title="Clear the selected location and reset the map"
+              className={clsx(
+                "rounded-lg border px-2 py-1 text-xs font-semibold transition",
+                dark
+                  ? "border-sky-800 text-sky-300 hover:bg-sky-950/70 hover:text-sky-200"
+                  : "border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-900",
+              )}
+            >
+              Reset
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close location report"
+              title="Close report"
+              className={clsx(
+                "rounded-lg border px-2 py-1 text-xs font-semibold transition",
+                dark
+                  ? "border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+              )}
+            >
+              Close
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="scorecard-scroll flex-1 overflow-y-auto px-5 py-4">
@@ -470,6 +532,59 @@ export function ScorecardConsole({
 
         {card && (
           <div className="space-y-4">
+            <section
+              className={clsx(
+                "rounded-xl border px-3 py-3",
+                dark ? "border-sky-900/70 bg-sky-950/20" : "border-sky-200 bg-sky-50/60",
+              )}
+              aria-label="Edit analysis settings"
+            >
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <div>
+                  <p className={clsx("text-[10px] font-semibold uppercase tracking-[0.14em]", dark ? "text-sky-400" : "text-sky-700")}>
+                    Edit analysis
+                  </p>
+                  <p className="text-xs font-semibold">
+                    {personaLabel} · {radiusKm} km
+                  </p>
+                </div>
+                {onEditAnalysis && (
+                  <button
+                    type="button"
+                    onClick={onEditAnalysis}
+                    className={clsx(
+                      "rounded-lg border px-2 py-1 text-[10px] font-semibold",
+                      dark
+                        ? "border-gray-700 text-gray-300 hover:bg-gray-800"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                    )}
+                  >
+                    Change audience
+                  </button>
+                )}
+              </div>
+              {onRadiusChange && (
+                <RadiusControl
+                  theme={theme}
+                  value={radiusKm}
+                  onChange={onRadiusChange}
+                  idPrefix={radiusControlIdPrefix}
+                  compact
+                />
+              )}
+              {updatingMessage && (
+                <p
+                  className={clsx(
+                    "mt-2 flex items-center gap-2 text-[11px] font-medium",
+                    dark ? "text-sky-300" : "text-sky-700",
+                  )}
+                  role="status"
+                >
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600" />
+                  {updatingMessage}
+                </p>
+              )}
+            </section>
             <div
               className={clsx(
                 "rounded-lg border px-3 py-2 text-[11px]",
@@ -791,14 +906,32 @@ export function ScorecardConsole({
 
                         {d === "amenities" && (() => {
                           const nearby = parseNearby(r.evidence ?? {}, personaDef.amenityOrder);
+                          const countEvidence =
+                            r.evidence.nearby_counts &&
+                            typeof r.evidence.nearby_counts === "object" &&
+                            !Array.isArray(r.evidence.nearby_counts)
+                              ? (r.evidence.nearby_counts as Record<string, unknown>)
+                              : {};
+                          const countFor = (category: string, fallback: number) => {
+                            const count = countEvidence[category];
+                            return typeof count === "number" ? count : fallback;
+                          };
+                          const totalNearby =
+                            Object.values(countEvidence).reduce<number>(
+                              (total, count) =>
+                                total + (typeof count === "number" ? count : 0),
+                              0,
+                            ) || nearby.length;
                           const groups = personaDef.amenityOrder
                             .map((cat) => ({
                               cat,
                               items: nearby.filter((p) => p.category === cat),
                             }))
                             .filter((g) => g.items.length > 0);
-                          const hasMore = groups.some((g) => g.items.length > PREVIEW_PER_CATEGORY)
-                            || nearby.length > PREVIEW_PER_CATEGORY * 2;
+                          const hasMore =
+                            groups.some(
+                              (g) => countFor(g.cat, g.items.length) > PREVIEW_PER_CATEGORY,
+                            ) || totalNearby > PREVIEW_PER_CATEGORY * 2;
                           return (
                             <div className={clsx("mt-3 border-t pt-2.5", dark ? "border-gray-800" : "border-slate-100")}>
                               <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -808,7 +941,7 @@ export function ScorecardConsole({
                                     dark ? "text-gray-500" : "text-slate-400",
                                   )}
                                 >
-                                  Nearby (5 km)
+                                  Nearby ({radiusKm} km)
                                 </p>
                                 {nearby.length > 0 && onViewNearbyList && (
                                   <button
@@ -821,19 +954,20 @@ export function ScorecardConsole({
                                         : "border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100",
                                     )}
                                   >
-                                    View list · {nearby.length}
+                                    View list · {totalNearby}
                                   </button>
                                 )}
                               </div>
                               {groups.length === 0 ? (
                                 <p className={clsx("text-[11px]", dark ? "text-gray-500" : "text-slate-400")}>
-                                  No named schools, hospitals, markets, or banks within 5 km.
+                                  No named schools, hospitals, markets, or banks within {radiusKm} km.
                                 </p>
                               ) : (
                                 <div className="space-y-2.5">
                                   {groups.map(({ cat, items }) => {
                                     const preview = items.slice(0, PREVIEW_PER_CATEGORY);
-                                    const extra = items.length - preview.length;
+                                    const categoryCount = countFor(cat, items.length);
+                                    const extra = categoryCount - preview.length;
                                     return (
                                       <div key={cat}>
                                         <p
@@ -843,7 +977,7 @@ export function ScorecardConsole({
                                           )}
                                         >
                                           {AMENITY_LABELS[cat] ?? cat}
-                                          {items.length > 1 ? ` · ${items.length}` : ""}
+                                          {categoryCount > 1 ? ` · ${categoryCount}` : ""}
                                         </p>
                                         <ul className="space-y-1">
                                           {preview.map((p) => (

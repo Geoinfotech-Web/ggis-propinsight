@@ -30,6 +30,7 @@ type Props = {
   theme: Theme;
   layers: OverlayLayer[];
   onToggle: (id: OverlayLayerId) => void;
+  radiusKm?: number;
 };
 
 function Toggle({
@@ -116,7 +117,7 @@ function Row({
  * Flood Watch–style icon layers control: a 40×40 button matching the Home /
  * basemap buttons, opening a left-hand popover of overlay toggles.
  */
-export function LayersPanel({ theme, layers, onToggle }: Props) {
+export function LayersPanel({ theme, layers, onToggle, radiusKm = 5 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const dark = theme === "dark";
@@ -212,7 +213,7 @@ export function LayersPanel({ theme, layers, onToggle }: Props) {
             {layers.map((layer) => (
               <Row
                 key={layer.id}
-                label={layer.label}
+                label={`${layer.label}${layer.id.endsWith("_poi") ? ` (${radiusKm} km)` : ""}`}
                 hint={layer.description}
                 on={layer.enabled}
                 onToggle={() => onToggle(layer.id)}

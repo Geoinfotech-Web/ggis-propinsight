@@ -7,6 +7,10 @@ import {
   type Scorecard,
 } from "./api";
 import { AppHeader } from "./components/AppHeader";
+import {
+  AnalysisSetupDialog,
+  type AnalysisCandidate,
+} from "./components/AnalysisSetupDialog";
 import { BasemapSwitcher } from "./components/BasemapSwitcher";
 import { IconHome } from "./components/Icons";
 import { LayersPanel, type OverlayLayer, type OverlayLayerId } from "./components/LayersPanel";
@@ -24,9 +28,18 @@ import {
   createPoiSymbolElement,
   nearbyFromScorecard,
 } from "./lib/amenitiesMap";
-import { loadPersona, savePersona, type PersonaKey } from "./lib/personas";
+import { getPersona, loadPersona, savePersona, type PersonaKey } from "./lib/personas";
 import { hideLandUseLayer, showLandUseLayer } from "./lib/landUseMap";
 import { hideLandCoverLayer, showLandCoverLayer } from "./lib/landCoverMap";
+import {
+  analysisBufferBounds,
+  hideAnalysisBuffer,
+  showAnalysisBuffer,
+} from "./lib/analysisBufferMap";
+import {
+  loadAnalysisRadius,
+  saveAnalysisRadius,
+} from "./lib/analysisRadius";
 import {
   AUTO_3D_ENTER_ZOOM,
   AUTO_3D_EXIT_ZOOM,
@@ -105,7 +118,7 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
   },
   {
     id: "school_poi",
-    label: "Schools (5 km)",
+    label: "Schools",
     description: "Schools within the selected location's buffer",
     swatch: AMENITY_MARKER_COLORS.school,
     symbol: "school",
@@ -113,7 +126,7 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
   },
   {
     id: "hospital_poi",
-    label: "Hospitals (5 km)",
+    label: "Hospitals",
     description: "Hospitals and clinics within the buffer",
     swatch: AMENITY_MARKER_COLORS.hospital,
     symbol: "hospital",
@@ -121,7 +134,7 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
   },
   {
     id: "bank_poi",
-    label: "Banks (5 km)",
+    label: "Banks",
     description: "Banks within the selected location's buffer",
     swatch: AMENITY_MARKER_COLORS.bank,
     symbol: "bank",
@@ -129,7 +142,7 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
   },
   {
     id: "market_poi",
-    label: "Markets (5 km)",
+    label: "Markets",
     description: "Markets within the selected location's buffer",
     swatch: AMENITY_MARKER_COLORS.market,
     symbol: "market",
@@ -137,7 +150,7 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
   },
   {
     id: "power_poi",
-    label: "Power (5 km)",
+    label: "Power",
     description: "Power infrastructure within the buffer",
     swatch: AMENITY_MARKER_COLORS.power,
     symbol: "power",
@@ -145,7 +158,7 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
   },
   {
     id: "fuel_poi",
-    label: "Fuel stations (5 km)",
+    label: "Fuel stations",
     description: "Fuel stations within the selected location's buffer",
     swatch: AMENITY_MARKER_COLORS.fuel,
     symbol: "fuel",
@@ -153,7 +166,7 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
   },
   {
     id: "security_poi",
-    label: "Security (5 km)",
+    label: "Security",
     description: "Police stations within the selected location's buffer",
     swatch: AMENITY_MARKER_COLORS.police,
     symbol: "police",
@@ -161,30 +174,49 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
   },
 ];
 
+function nearbyTotalFromScorecard(card: Scorecard | null): number {
+  const counts = card?.domains.amenities?.evidence.nearby_counts;
+  if (!counts || typeof counts !== "object" || Array.isArray(counts)) return 0;
+  return Object.values(counts).reduce<number>(
+    (total, count) => total + (typeof count === "number" ? count : 0),
+    0,
+  );
+}
+
 export default function App() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
+  const candidateMarkerRef = useRef<maplibregl.Marker | null>(null);
   const poiMarkersRef = useRef<maplibregl.Marker[]>([]);
   const basemapIdRef = useRef<BasemapId>(DEFAULT_BASEMAP_ID);
   const view3DRef = useRef(false);
   const suppressAuto3DRef = useRef(false);
   const lastPointRef = useRef<{ lon: number; lat: number; label?: string } | null>(null);
+  const analysisRequestRef = useRef(0);
+  const analysisAbortRef = useRef<AbortController | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") return "light";
     return loadTheme();
   });
   const [persona, setPersona] = useState<PersonaKey>(() => loadPersona());
+  const [analysisRadiusKm, setAnalysisRadiusKm] = useState(() => loadAnalysisRadius());
+  const [setupPersona, setSetupPersona] = useState<PersonaKey>(() => loadPersona());
+  const [setupRadiusKm, setSetupRadiusKm] = useState(() => loadAnalysisRadius());
+  const [candidate, setCandidate] = useState<AnalysisCandidate | null>(null);
   const [basemapId, setBasemapId] = useState<BasemapId>(DEFAULT_BASEMAP_ID);
   const [view3D, setView3D] = useState(false);
   const [layers, setLayers] = useState<OverlayLayer[]>(DEFAULT_LAYERS);
   const [card, setCard] = useState<Scorecard | null>(null);
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [updatingMessage, setUpdatingMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [desktopReportOpen, setDesktopReportOpen] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(true);
   const [amenitiesListOpen, setAmenitiesListOpen] = useState(false);
+  const [searchResetKey, setSearchResetKey] = useState(0);
 
   useEffect(() => {
     applyTheme(theme);
@@ -210,7 +242,15 @@ export default function App() {
   }, []);
 
   const runAnalyse = useCallback(
-    async (lng: number, lat: number, label?: string, profile: PersonaKey = persona) => {
+    async (
+      lng: number,
+      lat: number,
+      label?: string,
+      profile: PersonaKey = persona,
+      radiusKm: number = analysisRadiusKm,
+      preserveCard = false,
+      updateLabel?: string,
+    ) => {
       const map = mapRef.current;
       if (!map) return;
 
@@ -226,18 +266,45 @@ export default function App() {
 
       lastPointRef.current = { lon: lng, lat, label };
       setPlaceLabel(label ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      setDesktopReportOpen(true);
       setSheetOpen(true);
-      setLoading(true);
+      if (preserveCard) {
+        setUpdatingMessage(updateLabel ?? "Updating report…");
+      } else {
+        setCard(null);
+        setLoading(true);
+        setUpdatingMessage(null);
+      }
       setError(null);
+      const requestId = ++analysisRequestRef.current;
+      analysisAbortRef.current?.abort();
+      const controller = new AbortController();
+      analysisAbortRef.current = controller;
       try {
-        setCard(await analyzePoint(lng, lat, profile));
+        const result = await analyzePoint(
+          lng,
+          lat,
+          profile,
+          radiusKm * 1_000,
+          controller.signal,
+        );
+        if (requestId === analysisRequestRef.current) setCard(result);
       } catch (err) {
-        setError((err as Error).message);
+        if (
+          requestId === analysisRequestRef.current &&
+          (err as Error).name !== "AbortError"
+        ) {
+          setError((err as Error).message);
+        }
       } finally {
-        setLoading(false);
+        if (requestId === analysisRequestRef.current) {
+          setLoading(false);
+          setUpdatingMessage(null);
+          analysisAbortRef.current = null;
+        }
       }
     },
-    [layerEnabled, persona],
+    [analysisRadiusKm, layerEnabled, persona],
   );
 
   const onPersonaChange = (key: PersonaKey) => {
@@ -245,9 +312,100 @@ export default function App() {
     savePersona(key);
     const last = lastPointRef.current;
     if (last) {
-      void runAnalyse(last.lon, last.lat, last.label, key);
+      void runAnalyse(
+        last.lon,
+        last.lat,
+        last.label,
+        key,
+        analysisRadiusKm,
+        true,
+        `Updating report for ${getPersona(key).label}…`,
+      );
     }
   };
+
+  const beginAnalysisSetup = useCallback(
+    (lon: number, lat: number, label?: string) => {
+      setSetupPersona(persona);
+      setSetupRadiusKm(analysisRadiusKm);
+      setCandidate({ lon, lat, label });
+      mapRef.current?.fitBounds(analysisBufferBounds(lon, lat, analysisRadiusKm), {
+        padding: 72,
+        duration: 900,
+        maxZoom: 13,
+      });
+    },
+    [analysisRadiusKm, persona],
+  );
+
+  const cancelAnalysisSetup = useCallback(() => {
+    setCandidate(null);
+    const last = lastPointRef.current;
+    if (last) {
+      mapRef.current?.fitBounds(
+        analysisBufferBounds(last.lon, last.lat, analysisRadiusKm),
+        { padding: 72, duration: 600, maxZoom: 13 },
+      );
+    }
+  }, [analysisRadiusKm]);
+
+  const changeSetupRadius = (radiusKm: number) => {
+    setSetupRadiusKm(radiusKm);
+    if (candidate) {
+      mapRef.current?.fitBounds(
+        analysisBufferBounds(candidate.lon, candidate.lat, radiusKm),
+        { padding: 72, duration: 250, maxZoom: 13 },
+      );
+    }
+  };
+
+  const confirmAnalysisSetup = () => {
+    if (!candidate) return;
+    const selected = candidate;
+    setPersona(setupPersona);
+    savePersona(setupPersona);
+    setAnalysisRadiusKm(setupRadiusKm);
+    saveAnalysisRadius(setupRadiusKm);
+    setCandidate(null);
+    void runAnalyse(
+      selected.lon,
+      selected.lat,
+      selected.label,
+      setupPersona,
+      setupRadiusKm,
+    );
+  };
+
+  const changeAnalysisRadius = (radiusKm: number) => {
+    analysisAbortRef.current?.abort();
+    analysisRequestRef.current += 1;
+    setUpdatingMessage(null);
+    setAnalysisRadiusKm(radiusKm);
+    saveAnalysisRadius(radiusKm);
+  };
+
+  const editCurrentAnalysis = () => {
+    const last = lastPointRef.current;
+    if (last) beginAnalysisSetup(last.lon, last.lat, last.label);
+  };
+
+  useEffect(() => {
+    const last = lastPointRef.current;
+    if (!last || !card || candidate) return;
+    if (card.analysis_radius_m === analysisRadiusKm * 1_000) return;
+    const timeout = window.setTimeout(() => {
+      void runAnalyse(
+        last.lon,
+        last.lat,
+        last.label,
+        persona,
+        analysisRadiusKm,
+        true,
+        `Updating results for ${analysisRadiusKm} km…`,
+      );
+    }, 600);
+    return () => window.clearTimeout(timeout);
+  }, [analysisRadiusKm, card, candidate, persona, runAnalyse]);
 
   useEffect(() => {
     const container = mapContainer.current;
@@ -314,6 +472,8 @@ export default function App() {
       map.off("zoom", resizeMarkers);
       markerRef.current?.remove();
       markerRef.current = null;
+      candidateMarkerRef.current?.remove();
+      candidateMarkerRef.current = null;
       poiMarkersRef.current.forEach((marker) => marker.remove());
       poiMarkersRef.current = [];
       map.remove();
@@ -322,18 +482,57 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changeMapDimension]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    candidateMarkerRef.current?.remove();
+    candidateMarkerRef.current = null;
+    if (!map || !candidate) return;
+    candidateMarkerRef.current = new maplibregl.Marker({ color: "#d97706" })
+      .setLngLat([candidate.lon, candidate.lat])
+      .addTo(map);
+    return () => {
+      candidateMarkerRef.current?.remove();
+      candidateMarkerRef.current = null;
+    };
+  }, [candidate]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const syncBuffer = () => {
+      if (!map.isStyleLoaded()) return;
+      const point = candidate ?? lastPointRef.current;
+      if (!point) {
+        hideAnalysisBuffer(map);
+        return;
+      }
+      showAnalysisBuffer(
+        map,
+        point.lon,
+        point.lat,
+        candidate ? setupRadiusKm : analysisRadiusKm,
+        theme === "dark",
+      );
+    };
+    syncBuffer();
+    map.on("style.load", syncBuffer);
+    return () => {
+      map.off("style.load", syncBuffer);
+    };
+  }, [analysisRadiusKm, candidate, card, setupRadiusKm, theme]);
+
   // Keep click handler current without remounting the map.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const onClick = (e: maplibregl.MapMouseEvent) => {
-      void runAnalyse(e.lngLat.lng, e.lngLat.lat);
+      beginAnalysisSetup(e.lngLat.lng, e.lngLat.lat);
     };
     map.on("click", onClick);
     return () => {
       map.off("click", onClick);
     };
-  }, [runAnalyse]);
+  }, [beginAnalysisSetup]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -514,14 +713,6 @@ export default function App() {
     };
   }, [card, layers, layerEnabled]);
 
-  const flyAndAnalyse = (lon: number, lat: number, label?: string) => {
-    const map = mapRef.current;
-    if (map) {
-      map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 13), duration: 1200 });
-    }
-    void runAnalyse(lon, lat, label);
-  };
-
   const toggleLayer = (id: OverlayLayerId) => {
     setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, enabled: !l.enabled } : l)));
   };
@@ -533,7 +724,9 @@ export default function App() {
     changeMapDimension(enabled);
   };
   const dark = theme === "dark";
+  const displayRadiusKm = candidate ? setupRadiusKm : analysisRadiusKm;
   const nearbyAmenities = nearbyFromScorecard(card?.domains.amenities?.evidence);
+  const nearbyAmenityTotal = nearbyTotalFromScorecard(card) || nearbyAmenities.length;
   const anyAmenityLayerEnabled = AMENITY_LAYER_IDS.some((id) => layerEnabled(id));
 
   const focusNearby = (item: NearbyPoiItem) => {
@@ -544,6 +737,38 @@ export default function App() {
       duration: 900,
     });
     setAmenitiesListOpen(false);
+  };
+
+  const resetLocationAnalysis = () => {
+    analysisAbortRef.current?.abort();
+    analysisRequestRef.current += 1;
+    lastPointRef.current = null;
+    setCandidate(null);
+    markerRef.current?.remove();
+    markerRef.current = null;
+    candidateMarkerRef.current?.remove();
+    candidateMarkerRef.current = null;
+    poiMarkersRef.current.forEach((marker) => marker.remove());
+    poiMarkersRef.current = [];
+
+    setCard(null);
+    setPlaceLabel(null);
+    setLoading(false);
+    setUpdatingMessage(null);
+    setError(null);
+    setAmenitiesListOpen(false);
+    setSearchResetKey((key) => key + 1);
+    if (mapRef.current?.isStyleLoaded()) hideAnalysisBuffer(mapRef.current);
+
+    suppressAuto3DRef.current = false;
+    changeMapDimension(false, false);
+    mapRef.current?.flyTo({
+      center: FCT_CENTER,
+      zoom: FCT_HOME_ZOOM,
+      pitch: 0,
+      bearing: 0,
+      duration: 1000,
+    });
   };
 
   return (
@@ -558,30 +783,57 @@ export default function App() {
       <AppHeader
         theme={theme}
         onToggleTheme={toggleTheme}
-        onSelectPlace={flyAndAnalyse}
+        onSelectPlace={beginAnalysisSetup}
         locating={loading}
         persona={persona}
         onPersonaChange={onPersonaChange}
+        searchResetKey={searchResetKey}
       />
 
       <div className="relative flex min-h-0 flex-1 flex-row">
-        <div className="hidden h-full w-[22rem] shrink-0 lg:block xl:w-96">
-          <ScorecardConsole
-            theme={theme}
-            card={card}
-            loading={loading}
-            error={error}
-            placeLabel={placeLabel}
-            persona={persona}
-            onViewNearbyList={() => setAmenitiesListOpen(true)}
-          />
-        </div>
+        {desktopReportOpen && (
+          <div className="hidden h-full w-[22rem] shrink-0 lg:block xl:w-96">
+            <ScorecardConsole
+              theme={theme}
+              card={card}
+              loading={loading}
+              error={error}
+              placeLabel={placeLabel}
+              persona={persona}
+              onClose={() => setDesktopReportOpen(false)}
+              onReset={resetLocationAnalysis}
+              onViewNearbyList={() => setAmenitiesListOpen(true)}
+              radiusKm={analysisRadiusKm}
+              radiusControlIdPrefix="desktop-scorecard"
+              updatingMessage={updatingMessage}
+              onRadiusChange={changeAnalysisRadius}
+              onEditAnalysis={editCurrentAnalysis}
+            />
+          </div>
+        )}
 
         <main className="relative h-full min-h-0 min-w-0 flex-1">
           <div ref={mapContainer} className="h-full w-full bg-slate-200" />
 
           {/* Flood Watch MapPanel layout: Legend bottom-left · Home+Basemap+Layers under zoom */}
           <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100vw-5.5rem)] space-y-2 sm:max-w-none">
+            {!desktopReportOpen && (
+              <div className="pointer-events-auto hidden lg:block">
+                <button
+                  type="button"
+                  onClick={() => setDesktopReportOpen(true)}
+                  className={clsx(
+                    "inline-flex items-center rounded-xl border px-3 py-2 text-[11px] font-semibold shadow-lg transition",
+                    dark
+                      ? "border-gray-700 bg-gray-900 text-sky-300 hover:bg-gray-800"
+                      : "border-slate-200 bg-white text-sky-800 hover:border-slate-300",
+                  )}
+                  aria-label="Open location report"
+                >
+                  Open report
+                </button>
+              </div>
+            )}
             {nearbyAmenities.length > 0 && anyAmenityLayerEnabled && (
               <div className="pointer-events-auto">
                 <button
@@ -594,13 +846,13 @@ export default function App() {
                       : "border-slate-200 bg-white text-sky-800 hover:border-slate-300",
                   )}
                 >
-                  View amenities · {nearbyAmenities.length}
+                  View amenities · {nearbyAmenityTotal}
                 </button>
               </div>
             )}
           </div>
 
-          <div className="pointer-events-none absolute top-[5.5rem] right-3 z-10 flex flex-col gap-2">
+          <div className="pointer-events-none absolute top-[7rem] right-3 z-10 flex flex-col gap-2">
             <button
               type="button"
               onClick={() => {
@@ -637,7 +889,12 @@ export default function App() {
               <BasemapSwitcher theme={theme} activeId={basemapId} onChange={setBasemapId} />
             </div>
             <div className="pointer-events-auto">
-              <LayersPanel theme={theme} layers={layers} onToggle={toggleLayer} />
+              <LayersPanel
+                theme={theme}
+                layers={layers}
+                onToggle={toggleLayer}
+                radiusKm={displayRadiusKm}
+              />
             </div>
           </div>
 
@@ -650,7 +907,7 @@ export default function App() {
             )}
           >
             <div className="pointer-events-auto">
-              <MapLegend theme={theme} layers={layers} />
+              <MapLegend theme={theme} layers={layers} radiusKm={displayRadiusKm} />
             </div>
           </div>
 
@@ -688,7 +945,13 @@ export default function App() {
               placeLabel={placeLabel}
               persona={persona}
               onClose={() => setSheetOpen(false)}
+              onReset={resetLocationAnalysis}
               onViewNearbyList={() => setAmenitiesListOpen(true)}
+              radiusKm={analysisRadiusKm}
+              radiusControlIdPrefix="mobile-scorecard"
+              updatingMessage={updatingMessage}
+              onRadiusChange={changeAnalysisRadius}
+              onEditAnalysis={editCurrentAnalysis}
             />
           </div>
         </div>
@@ -698,8 +961,21 @@ export default function App() {
         theme={theme}
         items={nearbyAmenities}
         open={amenitiesListOpen}
+        radiusKm={analysisRadiusKm}
+        totalCount={nearbyAmenityTotal}
         onClose={() => setAmenitiesListOpen(false)}
         onSelect={focusNearby}
+      />
+
+      <AnalysisSetupDialog
+        theme={theme}
+        candidate={candidate}
+        persona={setupPersona}
+        radiusKm={setupRadiusKm}
+        onPersonaChange={setSetupPersona}
+        onRadiusChange={changeSetupRadius}
+        onCancel={cancelAnalysisSetup}
+        onAnalyse={confirmAnalysisSetup}
       />
 
       <footer

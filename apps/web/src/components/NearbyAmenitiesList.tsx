@@ -29,12 +29,14 @@ type Props = {
   theme: Theme;
   items: NearbyPoiItem[];
   open: boolean;
+  radiusKm?: number;
+  totalCount?: number;
   onClose: () => void;
   onSelect?: (item: NearbyPoiItem) => void;
 };
 
-/** Full nearby amenities list within the scorecard's 5 km search radius. */
-export function NearbyAmenitiesList({ theme, items, open, onClose, onSelect }: Props) {
+/** Full nearby amenities list within the scorecard's selected search radius. */
+export function NearbyAmenitiesList({ theme, items, open, radiusKm = 5, totalCount, onClose, onSelect }: Props) {
   if (!open) return null;
   const dark = theme === "dark";
   const groups = CATEGORY_ORDER.map((cat) => ({
@@ -64,13 +66,15 @@ export function NearbyAmenitiesList({ theme, items, open, onClose, onSelect }: P
         >
           <div>
             <p className={clsx("text-[10px] font-semibold uppercase tracking-[0.14em]", dark ? "text-sky-400" : "text-sky-700")}>
-              Within 5 km
+              Within {radiusKm} km
             </p>
             <h2 id="nearby-amenities-title" className="font-display text-lg font-semibold tracking-tight">
               Nearby amenities
             </h2>
             <p className={clsx("text-[11px]", dark ? "text-gray-400" : "text-slate-500")}>
-              {items.length} place{items.length === 1 ? "" : "s"} · schools, hospitals, markets, banks
+              {totalCount && totalCount > items.length
+                ? `Showing ${items.length} nearest of ${totalCount} places`
+                : `${items.length} place${items.length === 1 ? "" : "s"}`} · schools, hospitals, markets, banks
             </p>
           </div>
           <button

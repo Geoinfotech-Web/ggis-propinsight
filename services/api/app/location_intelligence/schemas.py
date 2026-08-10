@@ -32,6 +32,12 @@ class AnalyzeRequest(BaseModel):
             "(fct-v1 -> home_buyer)"
         ),
     )
+    radius_m: int = Field(
+        default=5_000,
+        ge=5_000,
+        le=20_000,
+        description="Nearby-data analysis radius in metres (5-20 km).",
+    )
 
 
 class DomainResult(BaseModel):
@@ -97,6 +103,7 @@ class ScorecardHighlight(BaseModel):
 class ScorecardResponse(BaseModel):
     location: LocationInfo
     domains: dict[str, DomainResult]
+    analysis_radius_m: int = 5_000
     layer_versions: dict[str, str] = Field(default_factory=dict)
     scoring_profile: str
     cached: bool = False

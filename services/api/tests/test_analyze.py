@@ -37,10 +37,10 @@ class _FakeCache:
         self.store: dict[str, dict] = {}
 
     @staticmethod
-    def make_key(profile, geohash8, layer_versions):  # noqa: ANN001
+    def make_key(profile, geohash8, layer_versions, radius_m=5_000):  # noqa: ANN001
         import json
 
-        return f"{profile}:{geohash8}:{json.dumps(layer_versions, sort_keys=True)}"
+        return f"{profile}:{geohash8}:{radius_m}:{json.dumps(layer_versions, sort_keys=True)}"
 
     async def get(self, key):  # noqa: ANN001
         return self.store.get(key)
@@ -75,6 +75,17 @@ async def test_analyze_returns_consumer_domains_for_buyer():
     assert res.domains["flood"].status == "ok"
     assert res.layer_versions["hazard"] == "ggis-fw-2.3"
     assert "history_events" in res.domains["flood"].evidence
+    assert res.analysis_radius_m == 5_000
+
+
+def test_analyze_request_validates_radius_bounds():
+    geometry = GeoJSONGeometry(type="Point", coordinates=[7.3986, 8.9634])
+    assert AnalyzeRequest(geometry=geometry, radius_m=5_000).radius_m == 5_000
+    assert AnalyzeRequest(geometry=geometry, radius_m=20_000).radius_m == 20_000
+    with pytest.raises(ValueError):
+        AnalyzeRequest(geometry=geometry, radius_m=4_999)
+    with pytest.raises(ValueError):
+        AnalyzeRequest(geometry=geometry, radius_m=20_001)
 
 
 @pytest.mark.asyncio
@@ -152,6 +163,30 @@ async def test_layer_bump_changes_key_and_forces_recompute():
     # A layer bump changes the versions -> new cache key -> recompute.
     await analyze(_req(), flood=flood, versions={"poi": "2026.07.2"}, cache=cache)  # type: ignore[arg-type]
     assert flood.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_radius_change_uses_a_separate_cache_entry():
+    flood = _StubFlood(_ok_flood())
+    cache = _FakeCache()
+    versions = {"poi": "2026.07.1"}
+    geometry = GeoJSONGeometry(type="Point", coordinates=[7.3986, 8.9634])
+
+    await analyze(
+        AnalyzeRequest(geometry=geometry, radius_m=5_000),
+        flood=flood,
+        versions=versions,
+        cache=cache,
+    )  # type: ignore[arg-type]
+    await analyze(
+        AnalyzeRequest(geometry=geometry, radius_m=10_000),
+        flood=flood,
+        versions=versions,
+        cache=cache,
+    )  # type: ignore[arg-type]
+
+    assert flood.calls == 2
+    assert len(cache.store) == 2
 
 
 @pytest.mark.asyncio
