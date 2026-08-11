@@ -60,7 +60,7 @@ PERSONAS: dict[str, dict[str, Any]] = {
     "tenant": {
         "key": "tenant",
         "label": "Tenant",
-        "blurb": "Day-to-day living — amenities, safety, access, livability",
+        "blurb": "Day-to-day living — amenities, safety, access, habitability",
         # Planning/tenure and feasibility are not part of a renter's daily report.
         "domain_weights": {
             "amenities": 0.23,

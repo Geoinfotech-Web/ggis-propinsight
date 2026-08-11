@@ -19,6 +19,7 @@ import { LayersPanel, type OverlayLayer, type OverlayLayerId } from "./component
 import { MapLegend } from "./components/MapLegend";
 import { Map3DControl } from "./components/Map3DControl";
 import { NearbyAmenitiesList, type NearbyPoiItem } from "./components/NearbyAmenitiesList";
+import { Professional3DDialog } from "./components/Professional3DDialog";
 import { ReportGuideDialog } from "./components/ReportGuideDialog";
 import { ScorecardConsole } from "./components/ScorecardConsole";
 import {
@@ -245,6 +246,7 @@ export default function App() {
   const [sheetOpen, setSheetOpen] = useState(true);
   const [amenitiesListOpen, setAmenitiesListOpen] = useState(false);
   const [reportGuideOpen, setReportGuideOpen] = useState(false);
+  const [professional3DOpen, setProfessional3DOpen] = useState(false);
   const [searchResetKey, setSearchResetKey] = useState(0);
 
   useEffect(() => {
@@ -340,6 +342,7 @@ export default function App() {
 
   const onPersonaChange = (key: PersonaKey) => {
     setReportGuideOpen(false);
+    setProfessional3DOpen(false);
     setPersona(key);
     savePersona(key);
     const last = lastPointRef.current;
@@ -368,6 +371,7 @@ export default function App() {
       setPdfStatus("idle");
       setPdfError(null);
       setReportGuideOpen(false);
+      setProfessional3DOpen(false);
       setSetupPersona(persona);
       setSetupRadiusKm(analysisRadiusKm);
       setCandidate({ lon, lat, label });
@@ -477,6 +481,7 @@ export default function App() {
     setDesktopReportOpen(true);
     setSheetOpen(true);
     setReportGuideOpen(false);
+    setProfessional3DOpen(false);
     setCandidate(null);
     setPendingCard(null);
     setAnalysisPhase("setup");
@@ -919,6 +924,7 @@ export default function App() {
       : undefined;
   const anyAmenityLayerEnabled = AMENITY_LAYER_IDS.some((id) => layerEnabled(id));
   const professionalReport = persona === "investor" || persona === "developer";
+  const committedPoint = lastPointRef.current;
   const reportGuidePersona = (["home_buyer", "tenant", "investor", "developer"] as string[]).includes(
     card?.persona?.key ?? "",
   )
@@ -966,6 +972,7 @@ export default function App() {
     setError(null);
     setAmenitiesListOpen(false);
     setReportGuideOpen(false);
+    setProfessional3DOpen(false);
     setSearchResetKey((key) => key + 1);
     if (mapRef.current?.isStyleLoaded()) hideAnalysisBuffer(mapRef.current);
 
@@ -1019,6 +1026,11 @@ export default function App() {
               updatingMessage={updatingMessage}
               onRadiusChange={changeAnalysisRadius}
               onEditAnalysis={editCurrentAnalysis}
+              onOpenProfessional3D={
+                professionalReport && committedPoint
+                  ? () => setProfessional3DOpen(true)
+                  : undefined
+              }
             />
           </div>
         )}
@@ -1169,6 +1181,11 @@ export default function App() {
               updatingMessage={updatingMessage}
               onRadiusChange={changeAnalysisRadius}
               onEditAnalysis={editCurrentAnalysis}
+              onOpenProfessional3D={
+                professionalReport && committedPoint
+                  ? () => setProfessional3DOpen(true)
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -1211,6 +1228,20 @@ export default function App() {
           persona={reportGuidePersona}
           placeLabel={placeLabel}
           onClose={closeReportGuide}
+        />
+      )}
+
+      {card && committedPoint && professionalReport && (
+        <Professional3DDialog
+          open={professional3DOpen}
+          theme={theme}
+          card={card}
+          persona={persona}
+          lon={committedPoint.lon}
+          lat={committedPoint.lat}
+          radiusKm={analysisRadiusKm}
+          placeLabel={placeLabel ?? `${committedPoint.lat.toFixed(5)}, ${committedPoint.lon.toFixed(5)}`}
+          onClose={() => setProfessional3DOpen(false)}
         />
       )}
 

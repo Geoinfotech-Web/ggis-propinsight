@@ -30,20 +30,20 @@ Watch alert chrome screen-for-screen. Web app wires tokens via `@design/tokens.c
 | Role | Font | Usage |
 |------|------|--------|
 | Body / UI | **Source Sans 3** | Labels, tables, forms, map chrome |
-| Display | **Fraunces** (opsz optical size) | Brand titles, panel H1/H2, KPI numbers |
+| Display | **Source Sans 3** | Brand titles, panel H1/H2, KPI numbers |
 
 ```html
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link
-  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:wght@400;500;600;700&display=swap"
+  href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap"
   rel="stylesheet"
 />
 ```
 
 ```css
 body { font-family: 'Source Sans 3', ui-sans-serif, system-ui, sans-serif; }
-.font-display { font-family: 'Fraunces', Georgia, serif; }
+.font-display { font-family: 'Source Sans 3', ui-sans-serif, system-ui, sans-serif; }
 ```
 
 **Type scale (common in Flood Watch)**

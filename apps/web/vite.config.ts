@@ -2,15 +2,31 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { viteStaticCopy } from "vite-plugin-static-copy";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(rootDir, "../..");
+const cesiumSource = "node_modules/cesium/Build/Cesium";
+const cesiumBaseUrl = "/cesiumStatic/";
 
 // API target: localhost:8001 on the host, or the `api` service in compose.
 const apiTarget = process.env.API_PROXY_TARGET || "http://localhost:8001";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    viteStaticCopy({
+      targets: [
+        { src: `${cesiumSource}/Workers`, dest: "cesiumStatic" },
+        { src: `${cesiumSource}/ThirdParty`, dest: "cesiumStatic" },
+        { src: `${cesiumSource}/Assets`, dest: "cesiumStatic" },
+        { src: `${cesiumSource}/Widgets`, dest: "cesiumStatic" },
+      ],
+    }),
+  ],
+  define: {
+    CESIUM_BASE_URL: JSON.stringify(cesiumBaseUrl),
+  },
   resolve: {
     alias: {
       "@design": path.resolve(repoRoot, "design"),

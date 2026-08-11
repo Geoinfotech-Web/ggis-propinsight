@@ -13,6 +13,20 @@ body,
   min-height: 100dvh;
 }
 
+html,
+body,
+#root,
+button,
+input,
+select,
+textarea {
+  font-family: var(--app-font-sans);
+}
+
+.font-display {
+  font-family: var(--app-font-sans) !important;
+}
+
 /*
  * MapLibre layout — Tailwind preflight leaves canvas-container at height:0,
  * which blanks the WebGL surface even when tiles fetch successfully.

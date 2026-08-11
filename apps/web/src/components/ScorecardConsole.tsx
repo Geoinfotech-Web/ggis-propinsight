@@ -12,7 +12,7 @@ const DOMAIN_LABELS: Record<(typeof DOMAIN_ORDER)[number], string> = {
   accessibility: "Accessibility",
   tenure: "Tenure",
   market: "Market",
-  livability: "Livability",
+  livability: "Habitability",
   feasibility: "Feasibility",
 };
 
@@ -476,7 +476,7 @@ function DetailGroup({
   );
 }
 
-function LivabilityDetails({ result, dark }: { result: DomainResult; dark: boolean }) {
+function HabitabilityDetails({ result, dark }: { result: DomainResult; dark: boolean }) {
   const green = asRecord(result.evidence.green_cover);
   const heat = asRecord(result.evidence.surface_temperature);
   const pressure = asRecord(result.evidence.environmental_pressure);
@@ -711,6 +711,7 @@ type Props = {
   updatingMessage?: string | null;
   onRadiusChange?: (radiusKm: number) => void;
   onEditAnalysis?: () => void;
+  onOpenProfessional3D?: () => void;
 };
 
 const PREVIEW_PER_CATEGORY = 2;
@@ -738,6 +739,7 @@ export function ScorecardConsole({
   updatingMessage,
   onRadiusChange,
   onEditAnalysis,
+  onOpenProfessional3D,
 }: Props) {
   const dark = theme === "dark";
   const personaDef = getPersona(persona);
@@ -897,6 +899,28 @@ export function ScorecardConsole({
                 </p>
               )}
             </section>
+            {showPlanningContext && onOpenProfessional3D && (
+              <button
+                type="button"
+                onClick={onOpenProfessional3D}
+                className={clsx(
+                  "flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left shadow-sm transition",
+                  dark
+                    ? "border-sky-800/80 bg-gradient-to-r from-sky-950/80 to-cyan-950/50 text-sky-100 hover:border-sky-600"
+                    : "border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-950 hover:border-sky-400",
+                )}
+              >
+                <span>
+                  <span className="block text-xs font-semibold">Professional 3D site view</span>
+                  <span className={clsx("mt-0.5 block text-[10px] leading-4", dark ? "text-sky-300/80" : "text-sky-700") }>
+                    Explore terrain, planning, land cover and nearby evidence.
+                  </span>
+                </span>
+                <span className="rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+                  Open
+                </span>
+              </button>
+            )}
             <div
               className={clsx(
                 "rounded-lg border px-3 py-2 text-[11px]",
@@ -1241,7 +1265,7 @@ export function ScorecardConsole({
                             No indicators yet — waiting on published data layers.
                           </p>
                         ) : d === "livability" ? (
-                          <LivabilityDetails result={r} dark={dark} />
+                          <HabitabilityDetails result={r} dark={dark} />
                         ) : d === "feasibility" ? (
                           <FeasibilityDetails result={r} dark={dark} />
                         ) : (

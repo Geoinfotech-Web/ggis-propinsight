@@ -16,7 +16,7 @@ DOMAIN_WORDS: dict[str, str] = {
     "accessibility": "road access",
     "tenure": "land status",
     "market": "market value",
-    "livability": "livability",
+    "livability": "habitability",
     "feasibility": "buildability",
 }
 

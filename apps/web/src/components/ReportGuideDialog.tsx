@@ -31,7 +31,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   accessibility: "Accessibility",
   tenure: "Tenure",
   market: "Market",
-  livability: "Livability",
+  livability: "Habitability",
   feasibility: "Feasibility",
 };
 

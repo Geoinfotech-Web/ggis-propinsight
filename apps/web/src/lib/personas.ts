@@ -29,7 +29,7 @@ export const PERSONAS: PersonaDef[] = [
     key: "tenant",
     label: "Tenant",
     shortLabel: "Tenant",
-    blurb: "Day-to-day living — amenities, safety, access, livability",
+    blurb: "Day-to-day living — amenities, safety, access, habitability",
     amenityOrder: ["school", "hospital", "market", "bank"],
   },
   {

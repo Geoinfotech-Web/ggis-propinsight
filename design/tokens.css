@@ -37,7 +37,7 @@
 
   /* Type */
   --app-font-sans: 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
-  --app-font-display: 'Fraunces', Georgia, serif;
+  --app-font-display: var(--app-font-sans);
 }
 
 [data-theme='dark'],
