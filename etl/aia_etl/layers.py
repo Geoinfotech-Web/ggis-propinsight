@@ -24,6 +24,10 @@ LAYERS = (
     "administrative_boundaries",
     "market",
     "security",
+    "surface_heat",
+    "population",
+    "settlement",
+    "projects",
 )
 UNPUBLISHED = "unpublished"
 

@@ -189,6 +189,38 @@ def test_dem_derivatives_publishable_sampling(tmp_path):
     assert 9.07 <= samples[0]["lat"] <= 9.10
 
 
+def test_flow_accumulation_runs_with_pinned_numba(tmp_path):
+    numpy = pytest.importorskip("numpy")
+    rasterio = pytest.importorskip("rasterio")
+    from rasterio.transform import from_origin
+
+    source = tmp_path / "sloping-dem.tif"
+    output = tmp_path / "flow.tif"
+    profile = {
+        "driver": "GTiff",
+        "height": 20,
+        "width": 20,
+        "count": 1,
+        "dtype": "float32",
+        "crs": "EPSG:4326",
+        "transform": from_origin(7.45, 9.10, 0.0002695, 0.0002695),
+        "nodata": -9999.0,
+    }
+    values = numpy.add.outer(
+        numpy.arange(20, 0, -1, dtype="float32"),
+        numpy.arange(20, 0, -1, dtype="float32"),
+    )
+    with rasterio.open(source, "w", **profile) as destination:
+        destination.write(values, 1)
+
+    dem.compute_flow_accumulation(source, output)
+
+    with rasterio.open(output) as result:
+        accumulation = result.read(1)
+    assert numpy.isfinite(accumulation).all()
+    assert accumulation.max() > 1
+
+
 def test_hazard_stub_does_not_publish_a_fake_version(monkeypatch):
     monkeypatch.setattr(flood_tiles, "fetch_model_version", lambda: "ggis-fw-2.4")
     monkeypatch.setattr(flood_tiles, "current_hazard_version", lambda: "unpublished")

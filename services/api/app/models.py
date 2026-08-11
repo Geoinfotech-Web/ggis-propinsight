@@ -12,6 +12,7 @@ from datetime import date, datetime
 from geoalchemy2 import Geometry
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     Float,
@@ -102,7 +103,7 @@ class Road(Base):
 
 
 class DemSample(Base):
-    """Point samples of DEM derivatives for feasibility until COG/TiTiler sampling lands."""
+    """100 m terrain samples derived from the published DEM and its derivatives."""
 
     __tablename__ = "dem_samples"
 
@@ -111,6 +112,8 @@ class DemSample(Base):
     elevation_m: Mapped[float] = mapped_column(Float)
     slope_deg: Mapped[float] = mapped_column(Float)
     twi: Mapped[float] = mapped_column(Float)
+    flow_accumulation: Mapped[float | None] = mapped_column(Float)
+    contributing_area_km2: Mapped[float | None] = mapped_column(Float)
     layer_version: Mapped[str] = mapped_column(String(20), index=True)
 
 
@@ -175,6 +178,79 @@ class LandCoverRaster(Base):
     classes: Mapped[dict] = mapped_column(JSONB)
     layer_version: Mapped[str] = mapped_column(String(20), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AnalysisRaster(Base):
+    """Versioned source catalogue for analysis-ready COGs."""
+
+    __tablename__ = "analysis_rasters"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    metric: Mapped[str] = mapped_column(String(48), index=True)
+    epoch: Mapped[str | None] = mapped_column(String(32), index=True)
+    source: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    raster_path: Mapped[str] = mapped_column(Text)
+    resolution_m: Mapped[int] = mapped_column(Integer)
+    checksum_sha256: Mapped[str] = mapped_column(String(64))
+    licence: Mapped[str | None] = mapped_column(String(160))
+    layer_version: Mapped[str] = mapped_column(String(32), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class SpatialMetricCell(Base):
+    """Query-ready 250 m cells for environmental and development outlook metrics."""
+
+    __tablename__ = "spatial_metric_cells"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    cell_id: Mapped[str] = mapped_column(String(48), unique=True, index=True)
+    geom: Mapped[object] = mapped_column(Geometry("POLYGON", srid=SRID))
+    population_2025: Mapped[float | None] = mapped_column(Float)
+    population_2030: Mapped[float | None] = mapped_column(Float)
+    population_growth_percentile: Mapped[float | None] = mapped_column(Float)
+    built_share_current: Mapped[float | None] = mapped_column(Float)
+    built_change_pct: Mapped[float | None] = mapped_column(Float)
+    settlement_growth_percentile: Mapped[float | None] = mapped_column(Float)
+    green_share: Mapped[float | None] = mapped_column(Float)
+    built_bare_share: Mapped[float | None] = mapped_column(Float)
+    surface_temp_c: Mapped[float | None] = mapped_column(Float)
+    heat_percentile: Mapped[float | None] = mapped_column(Float)
+    layer_versions: Mapped[dict] = mapped_column(JSONB, default=dict)
+    data_period: Mapped[str | None] = mapped_column(String(80))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DevelopmentProject(Base):
+    """Official public project record with explicit stage and location precision."""
+
+    __tablename__ = "development_projects"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    official_id: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(300))
+    authority: Mapped[str] = mapped_column(String(160))
+    agency: Mapped[str | None] = mapped_column(String(200))
+    sector: Mapped[str] = mapped_column(String(80), index=True)
+    lifecycle_stage: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str | None] = mapped_column(String(120))
+    budget_ngn: Mapped[float | None] = mapped_column(Float)
+    location_text: Mapped[str] = mapped_column(Text)
+    ward: Mapped[str | None] = mapped_column(String(160), index=True)
+    area_council: Mapped[str | None] = mapped_column(String(160), index=True)
+    geom: Mapped[object | None] = mapped_column(Geometry(srid=SRID))
+    location_precision: Mapped[str] = mapped_column(String(32), index=True)
+    geocoding_confidence: Mapped[float | None] = mapped_column(Float)
+    source_url: Mapped[str] = mapped_column(Text)
+    source_published_at: Mapped[date] = mapped_column(Date)
+    source_updated_at: Mapped[date | None] = mapped_column(Date)
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    layer_version: Mapped[str] = mapped_column(String(32), index=True)
 
 
 class ScoringProfile(Base):
@@ -318,5 +394,7 @@ Index("ix_dem_samples_geom", DemSample.geom, postgresql_using="gist")
 Index("ix_planning_geom", PlanningLayer.geom, postgresql_using="gist")
 Index("ix_land_use_geom", LandUseArea.geom, postgresql_using="gist")
 Index("ix_territory_boundaries_geom", TerritoryBoundary.geom, postgresql_using="gist")
+Index("ix_spatial_metric_cells_geom", SpatialMetricCell.geom, postgresql_using="gist")
+Index("ix_development_projects_geom", DevelopmentProject.geom, postgresql_using="gist")
 Index("ix_reviews_geom", Review.geom, postgresql_using="gist")
 Index("ix_market_geom", MarketSample.geom, postgresql_using="gist")

@@ -23,8 +23,8 @@ const DOMAIN_KICKERS: Record<(typeof DOMAIN_ORDER)[number], string> = {
   accessibility: "Connectivity · roads & destinations",
   tenure: "Planning · overlays",
   market: "Prices · samples",
-  livability: "Community · reviews",
-  feasibility: "Buildability · terrain",
+  livability: "Environment · comfort",
+  feasibility: "Buildability · 1 km site",
 };
 
 const AMENITY_LABELS: Record<string, string> = {
@@ -439,6 +439,263 @@ function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<
   }));
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function metricValue(value: unknown, suffix = ""): string {
+  return typeof value === "number" ? `${value.toLocaleString("en-NG", { maximumFractionDigits: 1 })}${suffix}` : "—";
+}
+
+function DetailGroup({
+  title,
+  description,
+  rows,
+  dark,
+}: {
+  title: string;
+  description: string;
+  rows: Array<[string, string]>;
+  dark: boolean;
+}) {
+  return (
+    <section className={clsx("rounded-lg border p-3", dark ? "border-gray-700 bg-gray-950/60" : "border-slate-200 bg-slate-50") }>
+      <p className={clsx("text-xs font-bold uppercase tracking-wider", dark ? "text-sky-300" : "text-sky-800")}>{title}</p>
+      <p className={clsx("mt-1 text-xs leading-5", dark ? "text-gray-300" : "text-slate-600")}>{description}</p>
+      <dl className="mt-3 space-y-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-start justify-between gap-3 text-sm leading-5">
+            <dt className={clsx("min-w-0", dark ? "text-gray-300" : "text-slate-600")}>{label}</dt>
+            <dd className={clsx("max-w-[58%] text-right font-semibold tabular-nums", dark ? "text-white" : "text-slate-950")}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function LivabilityDetails({ result, dark }: { result: DomainResult; dark: boolean }) {
+  const green = asRecord(result.evidence.green_cover);
+  const heat = asRecord(result.evidence.surface_temperature);
+  const pressure = asRecord(result.evidence.environmental_pressure);
+  if (!Object.keys(green).length || !Object.keys(heat).length) {
+    return <p className={clsx("text-[11px]", dark ? "text-gray-500" : "text-slate-500")}>Environmental metrics are unavailable until both land-cover and surface-heat coverage is published for this site.</p>;
+  }
+  return (
+    <div className="grid gap-2">
+      <DetailGroup
+        title="Environmental comfort"
+        description="A fixed 1 km neighbourhood view. Surface temperature is satellite-observed ground temperature, not air temperature."
+        dark={dark}
+        rows={[
+          ["Overall rating", result.rating ?? "Unavailable"],
+          ["Green cover", metricValue(green.share_pct, "%")],
+          ["Surface heat", `${metricValue(heat.value, " °C")} · warmer than ${metricValue(heat.fct_percentile, "% of FCT")}`],
+          ["Built-up or bare land", metricValue(pressure.built_bare_share_pct, "%")],
+          ["Context", metricValue(result.evidence.context_radius_m, " m")],
+          ["Data period", String(result.evidence.data_period ?? "—")],
+        ]}
+      />
+    </div>
+  );
+}
+
+function FeasibilityDetails({ result, dark }: { result: DomainResult; dark: boolean }) {
+  const [section, setSection] = useState<"terrain" | "drainage" | "servicing">("terrain");
+  const terrain = asRecord(result.evidence.terrain);
+  if (!Object.keys(terrain).length) {
+    return <p className={clsx("text-[11px]", dark ? "text-gray-500" : "text-slate-500")}>A detailed one-kilometre terrain profile is not available at this point yet.</p>;
+  }
+  const drainage = asRecord(result.evidence.drainage);
+  const modelled = asRecord(drainage.modelled);
+  const watercourse = asRecord(drainage.mapped_watercourse);
+  const servicing = asRecord(result.evidence.servicing);
+  const water = asRecord(servicing.water);
+  const power = asRecord(servicing.power);
+  const road = asRecord(servicing.nearest_road);
+  const sectionButton = (
+    key: "terrain" | "drainage" | "servicing",
+    label: string,
+    summary: string,
+  ) => (
+    <button
+      type="button"
+      onClick={() => setSection(key)}
+      aria-pressed={section === key}
+      className={clsx(
+        "min-w-0 rounded-lg border px-2 py-2 text-left transition",
+        section === key
+          ? dark
+            ? "border-sky-500 bg-sky-950/70 text-white"
+            : "border-sky-500 bg-sky-50 text-sky-950"
+          : dark
+            ? "border-gray-700 bg-gray-950/40 text-gray-300 hover:border-gray-500"
+            : "border-slate-200 bg-white text-slate-700 hover:border-slate-400",
+      )}
+    >
+      <span className="block truncate text-xs font-bold">{label}</span>
+      <span className={clsx("mt-0.5 block truncate text-[11px]", section === key ? "opacity-90" : "opacity-75")}>{summary}</span>
+    </button>
+  );
+  return (
+    <div className="grid gap-2">
+      <div className="grid grid-cols-3 gap-1.5" aria-label="Feasibility detail sections">
+        {sectionButton("terrain", "Terrain", `${metricValue(terrain.buildable_share_pct, "%")} gentle`)}
+        {sectionButton(
+          "drainage",
+          "Drainage",
+          modelled.distance_m != null ? `${formatMetres(modelled.distance_m as number)} path` : "No path mapped",
+        )}
+        {sectionButton(
+          "servicing",
+          "Servicing",
+          road.distance_m != null ? `${formatMetres(road.distance_m as number)} to road` : "Check services",
+        )}
+      </div>
+      {section === "terrain" && (
+        <DetailGroup
+          title="Terrain"
+          description="Shows the selected point and variation across the surrounding 1 km, which can affect earthworks and foundation cost."
+          dark={dark}
+          rows={[
+            ["Point elevation", metricValue(terrain.point_elevation_m, " m")],
+            ["Elevation range", `${metricValue(terrain.elevation_min_m, " m")} – ${metricValue(terrain.elevation_max_m, " m")}`],
+            ["Relief", metricValue(terrain.elevation_relief_m, " m")],
+            ["Point slope", metricValue(terrain.point_slope_deg, "°")],
+            ["Mean / P90 slope", `${metricValue(terrain.slope_mean_deg, "°")} / ${metricValue(terrain.slope_p90_deg, "°")}`],
+            ["Terrain at or below 5°", metricValue(terrain.buildable_share_pct, "%")],
+          ]}
+        />
+      )}
+      {section === "drainage" && (
+        <DetailGroup
+          title="Drainage and wetness"
+          description="Terrain-derived drainage indicates likely flow paths only; a site survey and drainage design are still required."
+          dark={dark}
+          rows={[
+            ["Median / P90 wetness", `${metricValue(terrain.twi_median)} / ${metricValue(terrain.twi_p90)}`],
+            ["High-wetness terrain", metricValue(terrain.wet_share_pct, "%")],
+            ["Modelled drainage path", modelled.distance_m != null ? formatMetres(modelled.distance_m as number) : "Not mapped"],
+            ["Contributing catchment", metricValue(modelled.contributing_area_km2, " km²")],
+            ["Mapped watercourse", watercourse.distance_m != null ? `${String(watercourse.name ?? "Watercourse")} · ${formatMetres(watercourse.distance_m as number)}` : "Not mapped"],
+          ]}
+        />
+      )}
+      {section === "servicing" && (
+        <DetailGroup
+          title="Servicing"
+          description="Distances are service-access proxies, not confirmation of capacity, connection rights or construction cost."
+          dark={dark}
+          rows={[
+            ["Water facility", water.distance_m != null ? `${String(water.name ?? "Water") } · ${formatMetres(water.distance_m as number)}` : "Not mapped"],
+            ["Power facility", power.distance_m != null ? `${String(power.name ?? "Power") } · ${formatMetres(power.distance_m as number)}` : "Not mapped"],
+            ["Mapped road", road.distance_m != null ? formatMetres(road.distance_m as number) : "Not mapped"],
+            ["Inputs available", metricValue(result.evidence.available_weight_pct, "%")],
+          ]}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProfessionalDecisionSummary({ card, dark }: { card: Scorecard; dark: boolean }) {
+  const terrain = asRecord(card.domains.feasibility?.evidence.terrain);
+  const outlook = card.development_outlook;
+  const signals = [
+    terrain.buildable_share_pct != null
+      ? `${metricValue(terrain.buildable_share_pct, "%")} of sampled terrain is at or below 5° within 1 km.`
+      : null,
+    card.domains.flood?.rating ? `${card.domains.flood.rating}; confirm drainage during due diligence.` : null,
+    card.location.land_use ? `${card.location.land_use.label} is the current ${card.location.land_use.designation === "official_masterplan" ? "official planning" : "mapped reference"} context.` : null,
+    outlook?.migration_pressure ? `${outlook.migration_pressure.band} likely in-migration pressure to 2030.` : null,
+    outlook?.projects?.total_count ? `${outlook.projects.total_count} verified public project record${outlook.projects.total_count === 1 ? "" : "s"} in the radius or broader administrative area.` : null,
+  ].filter((item): item is string => Boolean(item));
+  if (!signals.length) return null;
+  return (
+    <div className={clsx("mt-2 border-t pt-2", dark ? "border-gray-800" : "border-slate-200") }>
+      <p className="text-[9px] font-semibold uppercase tracking-widest">Decision checks</p>
+      <ul className="mt-1 space-y-1 text-[10px] leading-relaxed">
+        {signals.map((signal) => <li key={signal}>• {signal}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+function DevelopmentOutlookCard({
+  card,
+  dark,
+  open,
+  onToggle,
+}: {
+  card: Scorecard;
+  dark: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const outlook = card.development_outlook;
+  if (!outlook) return null;
+  const projects = [...(outlook.projects.nearby ?? []), ...(outlook.projects.broader_area ?? [])];
+  const population = outlook.population;
+  const settlement = outlook.settlement;
+  const pressure = outlook.migration_pressure;
+  return (
+    <section className={clsx("overflow-hidden rounded-xl border", dark ? "border-amber-900/60" : "border-amber-200") }>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-start justify-between gap-3 px-3 py-3 text-left">
+        <div>
+          <p className={clsx("text-[10px] font-semibold uppercase tracking-[0.14em]", dark ? "text-amber-300" : "text-amber-700")}>Professional context · {outlook.radius_m / 1000} km</p>
+          <h3 className="font-display text-base font-semibold">Development outlook</h3>
+          <p className={clsx("mt-1 text-[10px]", dark ? "text-gray-400" : "text-slate-500")}>Growth, settlement and verified public-project signals; not part of the fit score.</p>
+        </div>
+        <span className="text-[10px] font-semibold uppercase">{open ? "Hide" : "Details"}</span>
+      </button>
+      {open && (
+        <div className={clsx("space-y-2 border-t p-3", dark ? "border-amber-900/50" : "border-amber-100") }>
+          <DetailGroup
+            title="Population and settlement"
+            description="Modelled estimates and projections within the selected radius. They describe demand pressure, not guaranteed property demand."
+            dark={dark}
+            rows={[
+              ["Population 2025", metricValue(population?.estimate_2025)],
+              ["Population 2030", metricValue(population?.projection_2030)],
+              ["Projected change", population?.change_pct != null ? `${metricValue(population.change)} · ${metricValue(population.change_pct, "%")}` : "—"],
+              ["Annual growth", metricValue(population?.cagr_pct, "%")],
+              ["Current built share", metricValue(settlement?.built_share_current_pct, "%")],
+              ["Built-area change", metricValue(settlement?.built_change_pct, "%")],
+            ]}
+          />
+          <DetailGroup
+            title="Likely in-migration pressure"
+            description={pressure?.advisory ?? "The migration-pressure signal is unavailable until both population and settlement layers publish."}
+            dark={dark}
+            rows={[
+              ["Pressure band", pressure?.band ?? "Unavailable"],
+              ["Relative index", pressure ? metricValue(pressure.index, " / 100") : "—"],
+              ["Confidence", pressure?.confidence ?? "Low"],
+            ]}
+          />
+          <section className={clsx("rounded-lg border p-2.5", dark ? "border-gray-800 bg-gray-950/40" : "border-slate-100 bg-slate-50") }>
+          <p className={clsx("text-[10px] font-semibold uppercase tracking-widest", dark ? "text-amber-300" : "text-amber-700")}>Verified public projects · {outlook.projects.total_count ?? outlook.projects.returned_count ?? 0}</p>
+            <p className={clsx("mt-1 text-[10px] leading-relaxed", dark ? "text-gray-500" : "text-slate-500")}>{outlook.projects.advisory}</p>
+            {projects.length ? (
+              <ul className="mt-2 space-y-2">
+                {projects.map((project) => (
+                  <li key={project.official_id} className={clsx("border-t pt-2 first:border-0 first:pt-0", dark ? "border-gray-800" : "border-slate-200") }>
+                    <a href={project.source_url} target="_blank" rel="noreferrer" className={clsx("text-[11px] font-semibold hover:underline", dark ? "text-amber-300" : "text-amber-800")}>{project.name}</a>
+                    <p className="text-[10px] capitalize">{project.lifecycle_stage} · {project.sector}{project.distance_m != null ? ` · ${formatMetres(project.distance_m)}` : " · broader area"}</p>
+                    <p className={clsx("text-[9px]", dark ? "text-gray-500" : "text-slate-500")}>{project.authority} · source {project.source_published_at} · {project.location_precision}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="mt-2 text-[11px]">No current verified project records are available for this radius.</p>}
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
 type Props = {
   theme: Theme;
   card: Scorecard | null;
@@ -703,6 +960,7 @@ export function ScorecardConsole({
                     </p>
                   )}
                   <p className="text-[12px] font-medium leading-relaxed">{card.summary}</p>
+                  {!isConsumerReport && <ProfessionalDecisionSummary card={card} dark={dark} />}
                   {isConsumerReport && overviewHighlights.length > 0 && (
                     <div
                       className={clsx(
@@ -844,6 +1102,14 @@ export function ScorecardConsole({
             </div>
 
             <div className="space-y-2">
+              {!isConsumerReport && (
+                <DevelopmentOutlookCard
+                  card={card}
+                  dark={dark}
+                  open={expanded.development_outlook ?? false}
+                  onToggle={() => toggle("development_outlook")}
+                />
+              )}
               {orderedDomains.map((d) => {
                 const r = card.domains[d];
                 if (!r) return null;
@@ -884,6 +1150,7 @@ export function ScorecardConsole({
                             const badge = isFlood
                               ? floodRiskBadge(r, dark)
                               : qualityBadge(r.score, r.status, dark);
+                            if (d === "livability" && r.rating) badge.label = r.rating;
                             return (
                               <span
                                 className={clsx(
@@ -973,6 +1240,10 @@ export function ScorecardConsole({
                           <p className={clsx("text-[11px]", dark ? "text-gray-500" : "text-slate-400")}>
                             No indicators yet — waiting on published data layers.
                           </p>
+                        ) : d === "livability" ? (
+                          <LivabilityDetails result={r} dark={dark} />
+                        ) : d === "feasibility" ? (
+                          <FeasibilityDetails result={r} dark={dark} />
                         ) : (
                           <table className="w-full border-collapse text-left">
                             <tbody>

@@ -80,9 +80,9 @@ HIGHLIGHT_COPY: dict[str, dict[str, str]] = {
         "caution": "Price or value needs careful comparison before committing.",
     },
     "livability": {
-        "positive": "The area looks more comfortable for everyday living.",
-        "neutral": "Neighbourhood comfort is mixed; visit at different times.",
-        "caution": "Check noise, utilities and neighbourhood comfort in person.",
+        "positive": "Green cover and surface-heat conditions look more comfortable here.",
+        "neutral": "Environmental comfort is mixed; shade and surface heat vary nearby.",
+        "caution": "Limited greenery or stronger surface heat may affect daily comfort.",
     },
     "feasibility": {
         "positive": "Available terrain and access signals look more buildable.",

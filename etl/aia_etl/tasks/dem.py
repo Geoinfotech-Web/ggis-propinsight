@@ -29,7 +29,7 @@ from aia_etl.layers import bump_layer, next_layer_version
 log = logging.getLogger(__name__)
 settings = get_settings()
 
-DEFAULT_SAMPLE_SPACING_M = 1_000.0
+DEFAULT_SAMPLE_SPACING_M = 100.0
 
 
 def _pixel_size_metres(
@@ -87,9 +87,14 @@ def compute_slope_radians(dem_path: Path, out_path: Path) -> Path:
 
 def compute_flow_accumulation(dem_path: Path, out_path: Path) -> Path:
     """D8 flow accumulation with pysheds (pit-filled), written as a COG."""
+    import numpy as np
     import rasterio
     from pysheds.grid import Grid
     from rasterio.io import MemoryFile
+
+    # pysheds 0.5 still calls NumPy's former ``in1d`` alias internally.
+    if not hasattr(np, "in1d"):
+        np.in1d = np.isin
 
     grid = Grid.from_raster(str(dem_path))
     dem = grid.read_raster(str(dem_path))
@@ -147,6 +152,7 @@ def sample_dem_derivatives(
     dem_path: Path,
     slope_rad_path: Path,
     twi_path: Path,
+    flow_acc_path: Path | None = None,
     spacing_m: float = DEFAULT_SAMPLE_SPACING_M,
 ) -> list[dict[str, float]]:
     """Sample aligned terrain rasters into point records consumed by the API."""
@@ -192,23 +198,43 @@ def sample_dem_derivatives(
         elevations = np.asarray(dem)[valid]
         slopes_deg = np.degrees(np.asarray(slope)[valid])
         twis = np.asarray(twi)[valid]
+        flow_values = None
+        if flow_acc_path is not None:
+            with rasterio.open(flow_acc_path) as flow_src:
+                if flow_src.shape != dem_src.shape or flow_src.transform != dem_src.transform:
+                    raise ValueError("flow accumulation raster is not aligned")
+                flow = flow_src.read(1, masked=True)[::row_stride, ::col_stride]
+                flow_values = np.asarray(flow)[valid]
+        pixel_x_m, pixel_y_m = _pixel_size_metres(
+            *dem_src.res,
+            geographic=dem_src.crs.is_geographic,
+            mid_lat=mid_lat,
+        )
+        pixel_area_km2 = pixel_x_m * pixel_y_m / 1_000_000.0
 
-    return [
+    samples = [
         {
             "lon": float(lon),
             "lat": float(lat),
             "elevation_m": float(elevation),
             "slope_deg": float(slope_deg),
             "twi": float(twi_value),
+            "flow_accumulation": (
+                None if flow_values is None else float(flow_values[index])
+            ),
+            "contributing_area_km2": (
+                None if flow_values is None else float(flow_values[index] * pixel_area_km2)
+            ),
         }
-        for lon, lat, elevation, slope_deg, twi_value in zip(
-            lons, lats, elevations, slopes_deg, twis, strict=True
+        for index, (lon, lat, elevation, slope_deg, twi_value) in enumerate(
+            zip(lons, lats, elevations, slopes_deg, twis, strict=True)
         )
     ]
+    return samples
 
 
 def publish_dem_samples(
-    conn: Connection, samples: list[dict[str, float]], layer_version: str
+    conn: Connection, samples: list[dict[str, Any]], layer_version: str
 ) -> int:
     """Replace API-facing DEM samples inside the caller's publish transaction."""
     if not samples:
@@ -217,19 +243,28 @@ def publish_dem_samples(
     conn.execute(
         text("SELECT setval(pg_get_serial_sequence('dem_samples', 'id'), 1, false)")
     )
-    result = conn.execute(
-        text(
-            """
-            INSERT INTO dem_samples
-              (geom, elevation_m, slope_deg, twi, layer_version)
-            VALUES
-              (ST_SetSRID(ST_MakePoint(:lon, :lat), 4326),
-               :elevation_m, :slope_deg, :twi, :layer_version)
-            """
-        ),
-        [{**sample, "layer_version": layer_version} for sample in samples],
+    statement = text(
+        """
+        INSERT INTO dem_samples
+          (geom, elevation_m, slope_deg, twi, flow_accumulation,
+           contributing_area_km2, layer_version)
+        VALUES
+          (ST_SetSRID(ST_MakePoint(:lon, :lat), 4326),
+           :elevation_m, :slope_deg, :twi, :flow_accumulation,
+           :contributing_area_km2, :layer_version)
+        """
     )
-    return result.rowcount or len(samples)
+    # FCT at 100 m produces hundreds of thousands of records. Bounded batches
+    # avoid constructing a second full-size parameter list in memory.
+    for start in range(0, len(samples), 5_000):
+        conn.execute(
+            statement,
+            [
+                {**sample, "layer_version": layer_version}
+                for sample in samples[start : start + 5_000]
+            ],
+        )
+    return len(samples)
 
 
 @app.task(name="aia_etl.tasks.dem.dem_from_gee")
@@ -243,14 +278,62 @@ def dem_from_gee(bbox: list[float] | None = None, scale: int = 30) -> dict[str, 
     aoi = tuple(bbox) if bbox else FCT_BBOX
     dem_out = Path(settings.data_dir) / "dem" / "cop30.tif"
     export_dem_cop30(aoi, dem_out, scale=scale)  # type: ignore[arg-type]
-    result = terrain_derivatives(str(dem_out))
-    result["source"] = "GEE COPERNICUS/DEM/GLO30"
+    source = "Google Earth Engine COPERNICUS/DEM/GLO30_2024_1"
+    result = terrain_derivatives(str(dem_out), source=source)
+    result["source"] = source
     result["aoi_bbox"] = list(aoi)
     return result
 
 
+@app.task(name="aia_etl.tasks.dem.dem_from_copernicus")
+def dem_from_copernicus(bbox: list[float] | None = None) -> dict[str, Any]:
+    """Download Copernicus GLO-30 from the official Data Space STAC catalogue."""
+    from aia_etl.qa import FCT_BBOX
+    from aia_etl.sources.rasters import (
+        download_file,
+        merge_rasters,
+        public_copernicus_dem_href,
+        select_asset,
+        stac_items,
+    )
+
+    aoi = tuple(bbox) if bbox else FCT_BBOX
+    items = stac_items(
+        settings.copernicus_stac_url,
+        collection=settings.copernicus_dem_collection,
+        bbox=aoi,
+    )
+    if not items:
+        raise RuntimeError("Copernicus Data Space returned no GLO-30 tiles for the FCT")
+    tile_dir = Path(settings.data_dir) / "dem" / "source"
+    paths = [
+        download_file(
+            public_copernicus_dem_href(
+                select_asset(item, ("data", "dem", "download"))
+            ),
+            tile_dir / f"{item['id']}.tif",
+        )
+        for item in items
+    ]
+    dem_out = merge_rasters(
+        paths,
+        Path(settings.data_dir) / "dem" / "cop30.tif",
+        bounds=aoi,
+    )
+    result = terrain_derivatives(str(dem_out))
+    result.update(
+        source="Copernicus Data Space COP-DEM GLO-30",
+        source_url=settings.copernicus_stac_url,
+        aoi_bbox=list(aoi),
+    )
+    return result
+
+
 @app.task(name="aia_etl.tasks.dem.terrain_derivatives")
-def terrain_derivatives(dem_path: str) -> dict[str, Any]:
+def terrain_derivatives(
+    dem_path: str,
+    source: str = "Copernicus Data Space COP-DEM GLO-30",
+) -> dict[str, Any]:
     """Produce terrain COGs, publish API samples, then atomically bump ``dem``."""
     import rasterio
 
@@ -268,14 +351,12 @@ def terrain_derivatives(dem_path: str) -> dict[str, Any]:
     slope = compute_slope_radians(dem, data / "slope.tif")
     acc = compute_flow_accumulation(dem, data / "flow_accumulation.tif")
     twi = compute_twi(slope, acc, data / "twi.tif", cell_size)
-    samples = sample_dem_derivatives(dem, slope, twi)
+    samples = sample_dem_derivatives(dem, slope, twi, acc)
 
     with connect() as conn:
         version = next_layer_version(conn, "dem")
         published_samples = publish_dem_samples(conn, samples, version)
-        bumped_version, invalidated = bump_layer(
-            conn, "dem", source="Copernicus/SRTM DEM"
-        )
+        bumped_version, invalidated = bump_layer(conn, "dem", source=source)
         if bumped_version != version:
             raise RuntimeError("DEM layer version changed during publication")
 

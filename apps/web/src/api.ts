@@ -17,6 +17,66 @@ export type PersonaInfo = {
   blurb: string;
 };
 
+export type DevelopmentProject = {
+  official_id: string;
+  name: string;
+  authority: string;
+  agency: string | null;
+  sector: string;
+  lifecycle_stage: "budgeted" | "procurement" | "awarded" | "ongoing";
+  status: string | null;
+  budget_ngn: number | null;
+  location_text: string;
+  ward: string | null;
+  area_council: string | null;
+  location_precision: string;
+  distance_m: number | null;
+  geometry: GeoJSON.Geometry | null;
+  source_url: string;
+  source_published_at: string;
+  source_updated_at: string | null;
+  verified_at: string;
+};
+
+export type DevelopmentOutlook = {
+  radius_m: number;
+  status: "ok" | "pending" | "degraded";
+  confidence: string;
+  population: {
+    estimate_2025: number | null;
+    projection_2030: number | null;
+    change: number | null;
+    change_pct: number | null;
+    cagr_pct: number | null;
+    source: string;
+    modelled: boolean;
+  } | null;
+  settlement: {
+    built_share_current_pct: number | null;
+    built_change_pct: number | null;
+    source: string;
+    modelled: boolean;
+  } | null;
+  migration_pressure: {
+    band: "Low" | "Moderate" | "High";
+    index: number;
+    confidence: string;
+    components: Record<string, number>;
+    advisory: string;
+  } | null;
+  projects: {
+    counts_by_sector: Record<string, number>;
+    counts_by_stage: Record<string, number>;
+    nearby: DevelopmentProject[];
+    broader_area: DevelopmentProject[];
+    total_count: number;
+    returned_count: number;
+    advisory: string;
+  };
+  data_period: string | null;
+  sources: string[];
+};
+
 export type LandUseInfo = {
   category: string;
   label: string;
@@ -86,6 +146,7 @@ export type Scorecard = {
     tone: "positive" | "neutral" | "caution";
   }>;
   domain_priority?: string[];
+  development_outlook?: DevelopmentOutlook | null;
 };
 
 export const DOMAIN_ORDER = [

@@ -7,6 +7,7 @@
 # Google service-account key files (e.g. GEE credentials) — NEVER commit.
 # The GCP key drop lives here; keep it and any similarly-named key out of git.
 ggis-flood-watch-*.json
+ee-ebene-*.json
 *service-account*.json
 *-credentials.json
 gee-key*.json

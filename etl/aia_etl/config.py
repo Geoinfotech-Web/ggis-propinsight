@@ -31,6 +31,9 @@ class ETLSettings(BaseSettings):
     gee_service_account_email: str | None = None
     gee_service_account_key: str | None = None
     gee_project: str | None = None
+    # Earth Engine is primary for non-flood environmental analysis. ``direct``
+    # retains the download pipeline as an explicit operational fallback.
+    environment_source: str = "gee"
 
     # POI sources to ingest (comma-separated): overpass | overture | grid3 | ...
     poi_sources: str = "overpass,overture,grid3"
@@ -55,6 +58,43 @@ class ETLSettings(BaseSettings):
     land_cover_source: str = "auto"
     land_cover_scale_m: int = 30
 
+    # Direct authoritative raster fallback sources.
+    copernicus_stac_url: str = "https://stac.dataspace.copernicus.eu/v1"
+    copernicus_dem_collection: str = "cop-dem-glo-30-dged-cog"
+    # Planetary Computer exposes the authoritative USGS Collection 2 archive
+    # through publicly signed COG URLs; LandsatLook now redirects to login.
+    usgs_landsat_stac_url: str = "https://planetarycomputer.microsoft.com/api/stac/v1"
+    usgs_landsat_st_collection: str = "landsat-c2-l2"
+    planetary_computer_sign_url: str = (
+        "https://planetarycomputer.microsoft.com/api/sas/v1/sign"
+    )
+    worldpop_2025_url: str | None = (
+        "https://data.worldpop.org/repo/wopr/NGA/population/v3.0/"
+        "NGA_population_v3_0_gridded.zip"
+    )
+    # Official GHSL Mollweide 100 m tile R8_C19 covers the full FCT AOI.
+    ghsl_population_2025_url: str | None = (
+        "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/"
+        "GHS_POP_GLOBE_R2023A/GHS_POP_E2025_GLOBE_R2023A_54009_100/"
+        "V1-0/tiles/GHS_POP_E2025_GLOBE_R2023A_54009_100_V1_0_R8_C19.zip"
+    )
+    ghsl_population_2030_url: str | None = (
+        "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/"
+        "GHS_POP_GLOBE_R2023A/GHS_POP_E2030_GLOBE_R2023A_54009_100/"
+        "V1-0/tiles/GHS_POP_E2030_GLOBE_R2023A_54009_100_V1_0_R8_C19.zip"
+    )
+    ghsl_built_current_url: str | None = (
+        "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/"
+        "GHS_BUILT_S_GLOBE_R2023A/GHS_BUILT_S_E2025_GLOBE_R2023A_54009_100/"
+        "V1-0/tiles/GHS_BUILT_S_E2025_GLOBE_R2023A_54009_100_V1_0_R8_C19.zip"
+    )
+    ghsl_built_2030_url: str | None = (
+        "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/"
+        "GHS_BUILT_S_GLOBE_R2023A/GHS_BUILT_S_E2030_GLOBE_R2023A_54009_100/"
+        "V1-0/tiles/GHS_BUILT_S_E2030_GLOBE_R2023A_54009_100_V1_0_R8_C19.zip"
+    )
+    official_projects_feed_urls: str = ""
+
     # Licensed open market fallback used when no partner CSV is mounted.
     market_source_url: str = (
         "https://huggingface.co/datasets/ayookuns/abuja-housing-prices-v1/"
@@ -72,6 +112,10 @@ class ETLSettings(BaseSettings):
     @property
     def poi_sources_list(self) -> list[str]:
         return [s.strip() for s in self.poi_sources.split(",") if s.strip()]
+
+    @property
+    def official_projects_feeds(self) -> list[str]:
+        return [s.strip() for s in self.official_projects_feed_urls.split(",") if s.strip()]
 
     @property
     def sync_sqlalchemy_url(self) -> str:

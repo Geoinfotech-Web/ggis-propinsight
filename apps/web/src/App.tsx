@@ -31,6 +31,7 @@ import {
 import { getPersona, loadPersona, savePersona, type PersonaKey } from "./lib/personas";
 import { hideLandUseLayer, showLandUseLayer } from "./lib/landUseMap";
 import { hideLandCoverLayer, showLandCoverLayer } from "./lib/landCoverMap";
+import { mappedProjects } from "./lib/projectsMap";
 import {
   analysisBufferBounds,
   hideAnalysisBuffer,
@@ -100,6 +101,13 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
     label: "Flood context",
     description: "GGIS hazard context (tiles soon)",
     swatch: "#0284c7",
+    enabled: true,
+  },
+  {
+    id: "government_projects",
+    label: "Verified public projects",
+    description: "Official projects within the selected professional analysis radius",
+    swatch: "#d97706",
     enabled: true,
   },
   {
@@ -199,6 +207,7 @@ export default function App() {
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const candidateMarkerRef = useRef<maplibregl.Marker | null>(null);
   const poiMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const projectMarkersRef = useRef<maplibregl.Marker[]>([]);
   const basemapIdRef = useRef<BasemapId>(DEFAULT_BASEMAP_ID);
   const view3DRef = useRef(false);
   const suppressAuto3DRef = useRef(false);
@@ -723,6 +732,50 @@ export default function App() {
     };
   }, [card, layers, layerEnabled]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    projectMarkersRef.current.forEach((marker) => marker.remove());
+    projectMarkersRef.current = [];
+    if (!layerEnabled("government_projects")) return;
+
+    for (const project of mappedProjects(card)) {
+      if (!project.geometry || project.geometry.type !== "Point") continue;
+      const coordinates = project.geometry.coordinates as [number, number];
+      const element = document.createElement("button");
+      element.type = "button";
+      element.title = `${project.name} · ${project.lifecycle_stage}`;
+      element.setAttribute("aria-label", element.title);
+      Object.assign(element.style, {
+        width: "24px", height: "24px", borderRadius: "6px", border: "2px solid white",
+        backgroundColor: "#d97706", boxShadow: "0 1px 5px rgba(15,23,42,.6)",
+        cursor: "pointer", color: "white", fontSize: "13px", fontWeight: "700",
+      });
+      element.textContent = "P";
+      const content = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = project.name;
+      const meta = document.createElement("div");
+      meta.textContent = `${project.lifecycle_stage} · ${project.sector}${project.distance_m != null ? ` · ${(project.distance_m / 1000).toFixed(1)} km` : ""}`;
+      const source = document.createElement("a");
+      source.href = project.source_url;
+      source.target = "_blank";
+      source.rel = "noreferrer";
+      source.textContent = "Official source";
+      content.append(title, meta, source);
+      projectMarkersRef.current.push(
+        new maplibregl.Marker({ element, anchor: "center" })
+          .setLngLat(coordinates)
+          .setPopup(new maplibregl.Popup({ offset: 12 }).setDOMContent(content))
+          .addTo(map),
+      );
+    }
+    return () => {
+      projectMarkersRef.current.forEach((marker) => marker.remove());
+      projectMarkersRef.current = [];
+    };
+  }, [card, layers, layerEnabled]);
+
   const toggleLayer = (id: OverlayLayerId) => {
     setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, enabled: !l.enabled } : l)));
   };
@@ -748,6 +801,10 @@ export default function App() {
       ? securityCountValue
       : undefined;
   const anyAmenityLayerEnabled = AMENITY_LAYER_IDS.some((id) => layerEnabled(id));
+  const professionalReport = persona === "investor" || persona === "developer";
+  const visibleLayers = professionalReport
+    ? layers
+    : layers.filter((layer) => layer.id !== "government_projects");
 
   const focusNearby = (item: NearbyPoiItem) => {
     if (item.lon == null || item.lat == null) return;
@@ -770,6 +827,8 @@ export default function App() {
     candidateMarkerRef.current = null;
     poiMarkersRef.current.forEach((marker) => marker.remove());
     poiMarkersRef.current = [];
+    projectMarkersRef.current.forEach((marker) => marker.remove());
+    projectMarkersRef.current = [];
 
     setCard(null);
     setPlaceLabel(null);
@@ -911,7 +970,7 @@ export default function App() {
             <div className="pointer-events-auto">
               <LayersPanel
                 theme={theme}
-                layers={layers}
+                layers={visibleLayers}
                 onToggle={toggleLayer}
                 radiusKm={displayRadiusKm}
               />
@@ -929,7 +988,7 @@ export default function App() {
             <div className="pointer-events-auto">
               <MapLegend
                 theme={theme}
-                layers={layers}
+                layers={visibleLayers}
                 radiusKm={displayRadiusKm}
                 amenityCounts={legendAmenityCounts}
                 securityCount={legendSecurityCount}

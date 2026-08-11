@@ -85,7 +85,9 @@ export function MapLegend({
   const visibleOverlays = layers.filter(
     (layer) =>
       layer.enabled &&
-      (layer.id === "score_marker" || layer.id === "flood_context"),
+      (layer.id === "score_marker" ||
+        layer.id === "flood_context" ||
+        layer.id === "government_projects"),
   );
   const visibleAmenityLegend = AMENITY_LEGEND.filter((item) =>
     layers.some((layer) => layer.id === item.id && layer.enabled),
@@ -377,6 +379,7 @@ export function MapLegend({
                       )}
                     >
                       {layer.label}
+                      {layer.id === "government_projects" && ` (${radiusKm} km)`}
                     </span>
                   </div>
                 ))}

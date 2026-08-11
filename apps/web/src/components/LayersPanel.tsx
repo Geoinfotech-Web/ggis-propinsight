@@ -15,7 +15,8 @@ export type OverlayLayerId =
   | "market_poi"
   | "power_poi"
   | "fuel_poi"
-  | "security_poi";
+  | "security_poi"
+  | "government_projects";
 
 export type OverlayLayer = {
   id: OverlayLayerId;

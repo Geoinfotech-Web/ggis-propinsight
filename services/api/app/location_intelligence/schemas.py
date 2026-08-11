@@ -103,6 +103,18 @@ class ScorecardHighlight(BaseModel):
     tone: Literal["positive", "neutral", "caution"]
 
 
+class DevelopmentOutlook(BaseModel):
+    radius_m: int
+    status: Literal["ok", "pending", "degraded"]
+    confidence: str
+    population: dict[str, Any] | None = None
+    settlement: dict[str, Any] | None = None
+    migration_pressure: dict[str, Any] | None = None
+    projects: dict[str, Any] = Field(default_factory=dict)
+    data_period: str | None = None
+    sources: list[str] = Field(default_factory=list)
+
+
 class ScorecardResponse(BaseModel):
     location: LocationInfo
     domains: dict[str, DomainResult]
@@ -115,3 +127,4 @@ class ScorecardResponse(BaseModel):
     summary: str | None = None
     highlights: list[ScorecardHighlight] = Field(default_factory=list)
     domain_priority: list[str] = Field(default_factory=list)
+    development_outlook: DevelopmentOutlook | None = None

@@ -8,7 +8,7 @@ Phase 1 status per domain (Tier discipline, Overview §4):
   * security     — LIVE when `security` published (district incident aggregate + police).
   * tenure       — LIVE when `planning` published (advisory planning-overlay screen).
   * market       — LIVE when geocoded partner samples publish the `market` layer.
-  * livability   — Tier 3, later phase.
+  * livability   — LIVE when land-cover and surface-heat layers are published.
 
 No domain is surfaced without a defined pipeline behind it: domains without a
 live pipeline return status="pending" rather than a fabricated score.
@@ -34,13 +34,29 @@ from app.location_intelligence.amenities import (
     pois_within_radius,
     score_amenities,
 )
+from app.location_intelligence.development_outlook import (
+    PROFESSIONAL_PERSONAS,
+)
+from app.location_intelligence.development_outlook import (
+    development_outlook as build_development_outlook,
+)
 from app.location_intelligence.feasibility import (
-    nearest_dem_sample,
+    MIN_AVAILABLE_WEIGHT,
+    available_weight,
+    nearest_mapped_watercourse,
+    nearest_modelled_drainage,
     nearest_utility_distance_m,
+    nearest_utility_services,
     score_feasibility,
+    terrain_profile,
 )
 from app.location_intelligence.land_cover import land_cover_at_point
 from app.location_intelligence.land_use import land_use_at_point
+from app.location_intelligence.livability import (
+    environmental_context,
+    livability_rating,
+    score_livability,
+)
 from app.location_intelligence.market import market_samples_for_point, score_market
 from app.location_intelligence.personas import (
     domain_priority,
@@ -214,26 +230,110 @@ async def _score_feasibility(
     required = REQUIRED_LAYERS["feasibility"]
     if not layers_ready(versions, required) or session is None:
         return _pending("feasibility", versions)
-    dem = await nearest_dem_sample(session, lon, lat)
-    if dem is None:
+    profile = await terrain_profile(session, lon, lat)
+    if profile is None:
         return DomainResult(
             score=None,
             confidence="Low",
             status="degraded",
             included_in_fit=False,
             evidence={},
-            note="DEM layer published but no terrain samples near this location.",
+            note="DEM layer published but no terrain profile covers this one-kilometre site.",
         )
     util = await nearest_utility_distance_m(session, lon, lat)
-    return domainscore_to_result(
-        score_feasibility(
-            slope_deg=dem["slope_deg"],
-            flood_normalised=flood_normalised,
-            utility_distance_m=util,
-            twi=dem["twi"],
-        ),
-        status="ok",
+    coverage = available_weight(
+        terrain=True,
+        flood=flood_normalised is not None,
+        utility=util is not None,
+        wetness=profile.get("twi_p90") is not None,
     )
+    services = await nearest_utility_services(session, lon, lat)
+    evidence = {
+        "terrain": profile,
+        "drainage": {
+            "modelled": await nearest_modelled_drainage(session, lon, lat),
+            "mapped_watercourse": await nearest_mapped_watercourse(session, lon, lat),
+            "advisory": "Modelled and openly mapped drainage are not surveyed site drainage.",
+        },
+        "servicing": {
+            **services,
+            "nearest_road": (
+                None
+                if (road_m := await nearest_road_distance_m(session, lon, lat)) is None
+                else {
+                    "distance_m": round(road_m, 1),
+                    "kind": "mapped road centreline",
+                    "source": "Published roads layer",
+                }
+            ),
+        },
+        "available_weight_pct": round(coverage * 100),
+    }
+    if coverage < MIN_AVAILABLE_WEIGHT:
+        return DomainResult(
+            score=None,
+            confidence="Low",
+            status="degraded",
+            included_in_fit=False,
+            evidence=evidence,
+            note=(
+                "Detailed terrain evidence is available, but fewer than 60% of "
+                "weighted feasibility inputs are live, so no score is reported."
+            ),
+        )
+    ds = score_feasibility(
+        buildable_share_pct=profile["buildable_share_pct"],
+        flood_normalised=flood_normalised,
+        utility_distance_m=util,
+        twi=profile["twi_p90"],
+    )
+    result = domainscore_to_result(ds, status="ok")
+    result.evidence.update(evidence)
+    result.note = "Physical buildability from a fixed 1 km terrain context and servicing proxies."
+    return result
+
+
+async def _score_livability(
+    session: AsyncSession | None,
+    lon: float,
+    lat: float,
+    versions: dict[str, str],
+) -> DomainResult:
+    required = REQUIRED_LAYERS["livability"]
+    if not layers_ready(versions, required) or session is None:
+        return _pending("livability", versions)
+    context = await environmental_context(session, lon, lat)
+    if context is None or any(
+        context.get(key) is None
+        for key in ("green_share", "heat_percentile", "built_bare_share")
+    ):
+        return DomainResult(
+            score=None,
+            confidence="Low",
+            status="degraded",
+            included_in_fit=False,
+            evidence=context or {},
+            note="Published land-cover and surface-heat layers do not both cover this site.",
+        )
+    ds = score_livability(
+        green_share=context["green_share"],
+        heat_percentile=context["heat_percentile"],
+        built_bare_share=context["built_bare_share"],
+        evidence={
+            "surface_temperature": {
+                "value": round(context["surface_temp_c"], 1)
+                if context.get("surface_temp_c") is not None
+                else None,
+                "unit": "°C surface temperature",
+                "fct_percentile": round(context["heat_percentile"] * 100, 1),
+            },
+            "context_radius_m": context["context_radius_m"],
+            "data_period": context.get("data_period"),
+        },
+    )
+    result = domainscore_to_result(ds, status="ok")
+    result.rating = livability_rating(result.score)
+    return result
 
 
 async def _score_security(
@@ -476,6 +576,7 @@ async def analyze(
     domains["feasibility"] = await _score_feasibility(
         session, lon, lat, versions, flood_suitability_fraction
     )
+    domains["livability"] = await _score_livability(session, lon, lat, versions)
 
     # --- Tier 2 domains (most-local safe security aggregate, planning overlay) ---
     domains["security"] = await _score_security(
@@ -499,6 +600,17 @@ async def analyze(
     report_domains = filter_domains_for_persona(domains, persona_key)
     persona_meta = persona_public(persona_key)
     fit = fit_score(report_domains, persona_key)
+    outlook = None
+    if persona_key in PROFESSIONAL_PERSONAS and session is not None:
+        outlook = await build_development_outlook(
+            session,
+            lon,
+            lat,
+            radius_m,
+            ward=ward["name"] if ward else None,
+            area_council=ward["area_council"] if ward else None,
+        )
+
     response = ScorecardResponse(
         location=LocationInfo(
             geohash8=gh8,
@@ -525,6 +637,7 @@ async def analyze(
         ),
         highlights=build_highlights(persona_key, report_domains, priority),
         domain_priority=priority,
+        development_outlook=outlook,
     )
 
     if cache is not None and cache_key is not None:

@@ -59,6 +59,32 @@ Ward incident aggregates are used only when a source actually publishes them;
 otherwise the report clearly labels the broader district fallback rather than
 presenting district totals as neighbourhood crime data.
 
+Livability and professional development context are published to local,
+versioned data from Earth Engine. The environmental refresh combines Dynamic
+World cover with a cloud-masked median of the three most recent complete Landsat
+dry seasons. GHSL supplies the 2025 population estimate, 2030 projection, and
+built-surface change. Feasibility uses a fixed 1 km profile built from 100 m
+Copernicus GLO-30 terrain samples. Investor
+and Developer reports also include official FCTA, NOCOPO, and Budget Office
+project records; Tenant and Home Buyer reports do not expose that professional
+outlook.
+
+After configuring the Earth Engine service account and any structured official
+project feeds in `.env`, run:
+
+```bash
+docker compose exec etl-worker celery -A aia_etl.celery_app call \
+  aia_etl.tasks.environment.refresh_environmental_metrics
+docker compose exec etl-worker celery -A aia_etl.celery_app call \
+  aia_etl.tasks.projects.refresh_development_projects
+```
+
+The environmental task defaults to `ENVIRONMENT_SOURCE=gee`; the legacy direct
+download path remains available as an explicit fallback. Project ingestion rejects non-official hosts,
+undated records, and unrecognised lifecycle stages. Scheduled refreshes run
+annually for environmental metrics and weekly for verified projects when
+`etl-beat` is running.
+
 ```bash
 # Open land-use GeoJSON for the current map viewport
 curl -s "http://localhost:8001/v1/locations/land-use?min_lon=7.30&min_lat=8.90&max_lon=7.65&max_lat=9.20"

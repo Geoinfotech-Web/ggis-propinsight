@@ -59,7 +59,7 @@ DOMAIN_DEPENDENCIES: tuple[DomainDependency, ...] = (
             "aia_etl.tasks.dem.terrain_derivatives",
         ),
         phase="1",
-        note="Needs DEM slope / flow-accumulation / TWI COGs (GEE IAM may block).",
+        note="Earth Engine Copernicus GLO-30 slope / flow-accumulation / TWI pipeline.",
     ),
     DomainDependency(
         domain="security",
@@ -88,10 +88,10 @@ DOMAIN_DEPENDENCIES: tuple[DomainDependency, ...] = (
     DomainDependency(
         domain="livability",
         tier=3,
-        required_layers=(),
-        pipeline_tasks=(),
+        required_layers=("land_cover", "surface_heat"),
+        pipeline_tasks=("aia_etl.tasks.environment.refresh_environmental_metrics",),
         phase="3",
-        note="Community reviews + density — later phase.",
+        note="Environmental comfort from green cover, surface heat and built/bare pressure.",
     ),
 )
 

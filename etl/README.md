@@ -93,7 +93,7 @@ de-duplicated across providers (same-category points on a ~11 m grid, preferring
 named entries) so overlapping providers merge cleanly. A provider failure leaves
 the previous published dataset and registry version untouched.
 
-## Google Earth Engine (DEM + remote sensing)
+## Google Earth Engine (terrain + environmental analysis)
 
 `aia_etl/gee.py` sources the DEM (and other imagery analysis) from Earth Engine
 instead of manually downloaded tiles. Auth is service-account based, read from
@@ -104,7 +104,10 @@ the root `.env`:
 - `GEE_PROJECT` — optional; parsed from the SA email when unset
 
 Exports:
-- `export_dem_cop30(bbox, out)` — Copernicus GLO-30 DEM mosaic for the AOI.
+- `export_dem_cop30(bbox, out)` — current Copernicus GLO-30 DEM mosaic for the AOI.
+- `export_environmental_stack(bbox, out)` — GHSL 2025/2030 population and
+  built surface, Dynamic World green/built/bare fractions, and the cloud-masked
+  three-dry-season Landsat surface-temperature composite at 250 m.
 - `export_s2_composite(bbox, out, start, end)` — cloud-masked Sentinel-2 median
   composite (RGB+NIR) for vegetation/NDVI analysis.
 - `export_dynamic_world_mode(bbox, out, start, end)` — modal observed-cover class;
@@ -125,6 +128,7 @@ celery -A aia_etl.celery_app call aia_etl.tasks.flood_tiles.mirror_hazard_tiles
 celery -A aia_etl.celery_app call aia_etl.tasks.land_use.refresh_land_use
 celery -A aia_etl.celery_app call aia_etl.tasks.boundaries.refresh_fct_boundary
 celery -A aia_etl.celery_app call aia_etl.tasks.land_cover.refresh_land_cover
+celery -A aia_etl.celery_app call aia_etl.tasks.environment.refresh_environmental_metrics
 
 # DEM straight from Earth Engine (Copernicus GLO-30) → slope/flow-acc/TWI COGs:
 celery -A aia_etl.celery_app call aia_etl.tasks.dem.dem_from_gee
