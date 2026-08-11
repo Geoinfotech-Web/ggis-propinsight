@@ -10,6 +10,8 @@ import { AppHeader } from "./components/AppHeader";
 import {
   AnalysisSetupDialog,
   type AnalysisCandidate,
+  type AnalysisFlowPhase,
+  type PdfGenerationStatus,
 } from "./components/AnalysisSetupDialog";
 import { BasemapSwitcher } from "./components/BasemapSwitcher";
 import { IconHome } from "./components/Icons";
@@ -17,6 +19,7 @@ import { LayersPanel, type OverlayLayer, type OverlayLayerId } from "./component
 import { MapLegend } from "./components/MapLegend";
 import { Map3DControl } from "./components/Map3DControl";
 import { NearbyAmenitiesList, type NearbyPoiItem } from "./components/NearbyAmenitiesList";
+import { ReportGuideDialog } from "./components/ReportGuideDialog";
 import { ScorecardConsole } from "./components/ScorecardConsole";
 import {
   DEFAULT_BASEMAP_ID,
@@ -214,6 +217,7 @@ export default function App() {
   const lastPointRef = useRef<{ lon: number; lat: number; label?: string } | null>(null);
   const analysisRequestRef = useRef(0);
   const analysisAbortRef = useRef<AbortController | null>(null);
+  const pdfAbortRef = useRef<AbortController | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") return "light";
     return loadTheme();
@@ -223,6 +227,11 @@ export default function App() {
   const [setupPersona, setSetupPersona] = useState<PersonaKey>(() => loadPersona());
   const [setupRadiusKm, setSetupRadiusKm] = useState(() => loadAnalysisRadius());
   const [candidate, setCandidate] = useState<AnalysisCandidate | null>(null);
+  const [analysisPhase, setAnalysisPhase] = useState<AnalysisFlowPhase>("setup");
+  const [pendingCard, setPendingCard] = useState<Scorecard | null>(null);
+  const [analysisFlowError, setAnalysisFlowError] = useState<string | null>(null);
+  const [pdfStatus, setPdfStatus] = useState<PdfGenerationStatus>("idle");
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [basemapId, setBasemapId] = useState<BasemapId>(DEFAULT_BASEMAP_ID);
   const [view3D, setView3D] = useState(false);
   const [layers, setLayers] = useState<OverlayLayer[]>(DEFAULT_LAYERS);
@@ -235,11 +244,14 @@ export default function App() {
   const [desktopReportOpen, setDesktopReportOpen] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(true);
   const [amenitiesListOpen, setAmenitiesListOpen] = useState(false);
+  const [reportGuideOpen, setReportGuideOpen] = useState(false);
   const [searchResetKey, setSearchResetKey] = useState(0);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  const closeReportGuide = useCallback(() => setReportGuideOpen(false), []);
 
   const layerEnabled = useCallback(
     (id: OverlayLayerId) => layers.find((l) => l.id === id)?.enabled ?? true,
@@ -327,6 +339,7 @@ export default function App() {
   );
 
   const onPersonaChange = (key: PersonaKey) => {
+    setReportGuideOpen(false);
     setPersona(key);
     savePersona(key);
     const last = lastPointRef.current;
@@ -345,6 +358,16 @@ export default function App() {
 
   const beginAnalysisSetup = useCallback(
     (lon: number, lat: number, label?: string) => {
+      analysisAbortRef.current?.abort();
+      analysisRequestRef.current += 1;
+      setLoading(false);
+      setUpdatingMessage(null);
+      setAnalysisPhase("setup");
+      setPendingCard(null);
+      setAnalysisFlowError(null);
+      setPdfStatus("idle");
+      setPdfError(null);
+      setReportGuideOpen(false);
       setSetupPersona(persona);
       setSetupRadiusKm(analysisRadiusKm);
       setCandidate({ lon, lat, label });
@@ -358,7 +381,17 @@ export default function App() {
   );
 
   const cancelAnalysisSetup = useCallback(() => {
+    analysisAbortRef.current?.abort();
+    analysisRequestRef.current += 1;
+    pdfAbortRef.current?.abort();
+    pdfAbortRef.current = null;
     setCandidate(null);
+    setAnalysisPhase("setup");
+    setPendingCard(null);
+    setAnalysisFlowError(null);
+    setPdfStatus("idle");
+    setPdfError(null);
+    setLoading(false);
     const last = lastPointRef.current;
     if (last) {
       mapRef.current?.fitBounds(
@@ -378,22 +411,106 @@ export default function App() {
     }
   };
 
-  const confirmAnalysisSetup = () => {
+  const analyseCandidate = useCallback(async () => {
     if (!candidate) return;
     const selected = candidate;
+    setAnalysisPhase("analysing");
+    setPendingCard(null);
+    setAnalysisFlowError(null);
+    setPdfStatus("idle");
+    setPdfError(null);
+    setLoading(true);
+    setError(null);
+
+    const requestId = ++analysisRequestRef.current;
+    analysisAbortRef.current?.abort();
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
+    try {
+      const result = await analyzePoint(
+        selected.lon,
+        selected.lat,
+        setupPersona,
+        setupRadiusKm * 1_000,
+        controller.signal,
+      );
+      if (requestId !== analysisRequestRef.current) return;
+      setPendingCard(result);
+      setAnalysisPhase("ready");
+    } catch (err) {
+      if (requestId !== analysisRequestRef.current || (err as Error).name === "AbortError") return;
+      setAnalysisFlowError((err as Error).message || "The analysis service did not return a result.");
+      setAnalysisPhase("error");
+    } finally {
+      if (requestId === analysisRequestRef.current) {
+        setLoading(false);
+        analysisAbortRef.current = null;
+      }
+    }
+  }, [candidate, setupPersona, setupRadiusKm]);
+
+  const confirmAnalysisSetup = () => {
+    if (!candidate) return;
+    void analyseCandidate();
+  };
+
+  const viewCandidateOnMap = useCallback(() => {
+    if (!candidate || !pendingCard) return;
+    const map = mapRef.current;
+    if (map && layerEnabled("score_marker")) {
+      markerRef.current?.remove();
+      markerRef.current = new maplibregl.Marker({ color: "#0369a1" })
+        .setLngLat([candidate.lon, candidate.lat])
+        .addTo(map);
+    } else {
+      markerRef.current?.remove();
+      markerRef.current = null;
+    }
     setPersona(setupPersona);
     savePersona(setupPersona);
     setAnalysisRadiusKm(setupRadiusKm);
     saveAnalysisRadius(setupRadiusKm);
+    lastPointRef.current = candidate;
+    setPlaceLabel(candidate.label ?? `${candidate.lat.toFixed(5)}, ${candidate.lon.toFixed(5)}`);
+    setCard(pendingCard);
+    setError(null);
+    setDesktopReportOpen(true);
+    setSheetOpen(true);
+    setReportGuideOpen(false);
     setCandidate(null);
-    void runAnalyse(
-      selected.lon,
-      selected.lat,
-      selected.label,
-      setupPersona,
-      setupRadiusKm,
-    );
-  };
+    setPendingCard(null);
+    setAnalysisPhase("setup");
+    setPdfStatus("idle");
+    setPdfError(null);
+  }, [candidate, layerEnabled, pendingCard, setupPersona, setupRadiusKm]);
+
+  const generatePendingReport = useCallback(async () => {
+    if (!candidate || !pendingCard) return;
+    pdfAbortRef.current?.abort();
+    const controller = new AbortController();
+    pdfAbortRef.current = controller;
+    setPdfStatus("generating");
+    setPdfError(null);
+    try {
+      const { generateLocationReport } = await import("./lib/reportPdf");
+      await generateLocationReport({
+        card: pendingCard,
+        persona: setupPersona,
+        lon: candidate.lon,
+        lat: candidate.lat,
+        radiusKm: setupRadiusKm,
+        placeLabel: candidate.label ?? `${candidate.lat.toFixed(5)}, ${candidate.lon.toFixed(5)}`,
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) setPdfStatus("downloaded");
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      setPdfStatus("error");
+      setPdfError((err as Error).message || "The PDF exporter could not finish.");
+    } finally {
+      if (pdfAbortRef.current === controller) pdfAbortRef.current = null;
+    }
+  }, [candidate, pendingCard, setupPersona, setupRadiusKm]);
 
   const changeAnalysisRadius = (radiusKm: number) => {
     analysisAbortRef.current?.abort();
@@ -802,6 +919,11 @@ export default function App() {
       : undefined;
   const anyAmenityLayerEnabled = AMENITY_LAYER_IDS.some((id) => layerEnabled(id));
   const professionalReport = persona === "investor" || persona === "developer";
+  const reportGuidePersona = (["home_buyer", "tenant", "investor", "developer"] as string[]).includes(
+    card?.persona?.key ?? "",
+  )
+    ? (card?.persona?.key as PersonaKey)
+    : persona;
   const visibleLayers = professionalReport
     ? layers
     : layers.filter((layer) => layer.id !== "government_projects");
@@ -819,8 +941,15 @@ export default function App() {
   const resetLocationAnalysis = () => {
     analysisAbortRef.current?.abort();
     analysisRequestRef.current += 1;
+    pdfAbortRef.current?.abort();
+    pdfAbortRef.current = null;
     lastPointRef.current = null;
     setCandidate(null);
+    setAnalysisPhase("setup");
+    setPendingCard(null);
+    setAnalysisFlowError(null);
+    setPdfStatus("idle");
+    setPdfError(null);
     markerRef.current?.remove();
     markerRef.current = null;
     candidateMarkerRef.current?.remove();
@@ -836,6 +965,7 @@ export default function App() {
     setUpdatingMessage(null);
     setError(null);
     setAmenitiesListOpen(false);
+    setReportGuideOpen(false);
     setSearchResetKey((key) => key + 1);
     if (mapRef.current?.isStyleLoaded()) hideAnalysisBuffer(mapRef.current);
 
@@ -867,6 +997,8 @@ export default function App() {
         persona={persona}
         onPersonaChange={onPersonaChange}
         searchResetKey={searchResetKey}
+        reportGuideAvailable={Boolean(card)}
+        onOpenReportGuide={() => setReportGuideOpen(true)}
       />
 
       <div className="relative flex min-h-0 flex-1 flex-row">
@@ -1057,11 +1189,30 @@ export default function App() {
         candidate={candidate}
         persona={setupPersona}
         radiusKm={setupRadiusKm}
+        phase={analysisPhase}
+        pendingCard={pendingCard}
+        analysisError={analysisFlowError}
+        pdfStatus={pdfStatus}
+        pdfError={pdfError}
         onPersonaChange={setSetupPersona}
         onRadiusChange={changeSetupRadius}
         onCancel={cancelAnalysisSetup}
         onAnalyse={confirmAnalysisSetup}
+        onRetry={() => void analyseCandidate()}
+        onGenerateReport={() => void generatePendingReport()}
+        onViewMap={viewCandidateOnMap}
       />
+
+      {card && (
+        <ReportGuideDialog
+          open={reportGuideOpen}
+          theme={theme}
+          card={card}
+          persona={reportGuidePersona}
+          placeLabel={placeLabel}
+          onClose={closeReportGuide}
+        />
+      )}
 
       <footer
         className={clsx(

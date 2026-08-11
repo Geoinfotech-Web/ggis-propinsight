@@ -15,6 +15,8 @@ type Props = {
   persona: PersonaKey;
   onPersonaChange: (key: PersonaKey) => void;
   searchResetKey?: number;
+  reportGuideAvailable?: boolean;
+  onOpenReportGuide: () => void;
 };
 
 /**
@@ -30,6 +32,8 @@ export function AppHeader({
   persona,
   onPersonaChange,
   searchResetKey,
+  reportGuideAvailable = false,
+  onOpenReportGuide,
 }: Props) {
   const dark = theme === "dark";
   const [geoBusy, setGeoBusy] = useState(false);
@@ -147,6 +151,28 @@ export function AppHeader({
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-teal-500" />
               <span className="text-[11px] font-medium">Live</span>
             </div>
+
+            <button
+              type="button"
+              onClick={onOpenReportGuide}
+              disabled={!reportGuideAvailable}
+              className={clsx(
+                "inline-flex h-9 items-center justify-center rounded-lg border px-2.5 text-[11px] font-semibold transition sm:h-8",
+                !reportGuideAvailable && "cursor-not-allowed opacity-45",
+                dark
+                  ? "border-gray-700 text-sky-300 hover:bg-gray-800"
+                  : "border-slate-200 text-sky-800 hover:bg-white",
+              )}
+              aria-label="Open report guide"
+              title={
+                reportGuideAvailable
+                  ? "Understand report and next steps"
+                  : "Analyse a location to open the guide"
+              }
+            >
+              <span className="sm:hidden">Guide</span>
+              <span className="hidden sm:inline">Report guide</span>
+            </button>
 
             <button
               type="button"
