@@ -16,6 +16,8 @@ GDAL / rasterio / exactextract for raster analytics; QGIS-supported production w
 | Open land-use context | Monthly / Overture release | Overture `base/land_use` polygons → stable product classes → atomic `land_use` publish; explicitly non-statutory |
 | FCT wards & operational boundary | With land-use/cover refresh | GRID3 wards v3 → publish 62 local lookup areas + dissolve → provenance-stamped FCT clipping boundary |
 | Observed land cover | Monthly | Dynamic World modal class when GEE IAM works; automatic ESA WorldCover 10 m fallback → FCT-clipped COG |
+| Professional 3D buildings | Monthly / Overture release | Full FCT `building` + `building_part` subset → parts-first deduplication → published, floors-derived, or 6 m visual extrusion height → atomic PostGIS publish |
+| Observed canopy zones | With land-cover publication | Polygonise only tree-cover pixels → merge connected pixels → remove patches below 0.25 ha → simplify and publish; not an individual-tree inventory |
 | Official planning vectors | On licensed delivery | AGIS/FCTA SHP/GPKG/GeoJSON → normalize → clip → `official_masterplan` precedence |
 
 ## `layer_version` discipline
@@ -54,6 +56,7 @@ Domain readiness is gated by published `layer_registry` versions — see
 | `tasks/land_use.py` | `refresh_land_use` — Overture polygon query → classify → atomic PostGIS publish; never represented as official AGIS zoning. |
 | `tasks/boundaries.py` | `refresh_fct_boundary` — dissolve 62 GRID3 FCT wards into the operational clipping boundary. |
 | `tasks/land_cover.py` | `refresh_land_cover` — Dynamic World preferred / ESA fallback → FCT-clipped COG and versioned metadata. |
+| `tasks/buildings.py` | `refresh_buildings` — full FCT Overture building/part extraction, parts-first precedence and atomic versioned publish. |
 | `tasks/official_land_use.py` | `import_official_land_use` — licensed AGIS/FCTA vector normalization and authoritative precedence. |
 
 The `layer_registry` table (Alembic migration `0002`) is the shared source of truth

@@ -180,6 +180,43 @@ class LandCoverRaster(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class BuildingFootprint(Base):
+    """Overture building or preferred building-part geometry for analytical 3D."""
+
+    __tablename__ = "building_footprints"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    parent_source_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    feature_type: Mapped[str] = mapped_column(String(24))
+    building_class: Mapped[str | None] = mapped_column(String(80))
+    height_m: Mapped[float | None] = mapped_column(Float)
+    num_floors: Mapped[int | None] = mapped_column(Integer)
+    min_height_m: Mapped[float | None] = mapped_column(Float)
+    display_height_m: Mapped[float] = mapped_column(Float)
+    height_basis: Mapped[str] = mapped_column(String(24), index=True)
+    source_datasets: Mapped[list] = mapped_column(JSONB, default=list)
+    release: Mapped[str] = mapped_column(String(32))
+    layer_version: Mapped[str] = mapped_column(String(32), index=True)
+    geom: Mapped[object] = mapped_column(Geometry("MULTIPOLYGON", srid=SRID))
+
+
+class VegetationCanopyArea(Base):
+    """Observed tree-cover patch; geometry is not an individual tree inventory."""
+
+    __tablename__ = "vegetation_canopy_areas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    resolution_m: Mapped[int] = mapped_column(Integer)
+    area_ha: Mapped[float] = mapped_column(Float)
+    layer_version: Mapped[str] = mapped_column(String(32), index=True)
+    geom: Mapped[object] = mapped_column(Geometry("MULTIPOLYGON", srid=SRID))
+
+
 class AnalysisRaster(Base):
     """Versioned source catalogue for analysis-ready COGs."""
 
@@ -394,6 +431,8 @@ Index("ix_dem_samples_geom", DemSample.geom, postgresql_using="gist")
 Index("ix_planning_geom", PlanningLayer.geom, postgresql_using="gist")
 Index("ix_land_use_geom", LandUseArea.geom, postgresql_using="gist")
 Index("ix_territory_boundaries_geom", TerritoryBoundary.geom, postgresql_using="gist")
+Index("ix_building_footprints_geom", BuildingFootprint.geom, postgresql_using="gist")
+Index("ix_vegetation_canopy_areas_geom", VegetationCanopyArea.geom, postgresql_using="gist")
 Index("ix_spatial_metric_cells_geom", SpatialMetricCell.geom, postgresql_using="gist")
 Index("ix_development_projects_geom", DevelopmentProject.geom, postgresql_using="gist")
 Index("ix_reviews_geom", Review.geom, postgresql_using="gist")

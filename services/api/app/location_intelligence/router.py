@@ -8,6 +8,10 @@ from app.cache import ScorecardCache, get_cache
 from app.db import get_session
 from app.location_intelligence.land_cover import land_cover_meta, land_cover_tile
 from app.location_intelligence.land_use import land_use_feature_collection
+from app.location_intelligence.professional_3d import (
+    building_feature_collection,
+    vegetation_feature_collection,
+)
 from app.location_intelligence.registry import current_layer_versions
 from app.location_intelligence.schemas import AnalyzeRequest, ScorecardResponse
 from app.location_intelligence.service import analyze
@@ -48,6 +52,38 @@ async def land_use_map(
         session,
         (min_lon, min_lat, max_lon, max_lat),
         limit=limit,
+    )
+
+
+@router.get("/3d/buildings")
+async def professional_buildings(
+    min_lon: float = Query(..., ge=-180, le=180),
+    min_lat: float = Query(..., ge=-90, le=90),
+    max_lon: float = Query(..., ge=-180, le=180),
+    max_lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    lat: float = Query(..., ge=-90, le=90),
+    limit: int = Query(10_000, ge=1, le=10_000),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await building_feature_collection(
+        session, (min_lon, min_lat, max_lon, max_lat), (lon, lat), limit=limit
+    )
+
+
+@router.get("/3d/vegetation")
+async def professional_vegetation(
+    min_lon: float = Query(..., ge=-180, le=180),
+    min_lat: float = Query(..., ge=-90, le=90),
+    max_lon: float = Query(..., ge=-180, le=180),
+    max_lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    lat: float = Query(..., ge=-90, le=90),
+    limit: int = Query(3_000, ge=1, le=3_000),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await vegetation_feature_collection(
+        session, (min_lon, min_lat, max_lon, max_lat), (lon, lat), limit=limit
     )
 
 

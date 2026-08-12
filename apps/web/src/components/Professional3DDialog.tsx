@@ -2,7 +2,11 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import type { Scorecard } from "../api";
-import type { Professional3DScene } from "../lib/cesiumScene";
+import type {
+  Professional3DFeature,
+  Professional3DMode,
+  Professional3DScene,
+} from "../lib/cesiumScene";
 import type { PersonaKey } from "../lib/personas";
 import type { Theme } from "../theme";
 import { IconHome, IconX } from "./Icons";
@@ -45,6 +49,11 @@ export function Professional3DDialog({
   const [landUseVisible, setLandUseVisible] = useState(true);
   const [evidenceVisible, setEvidenceVisible] = useState(true);
   const [buildingsVisible, setBuildingsVisible] = useState(true);
+  const [vegetationVisible, setVegetationVisible] = useState(true);
+  const [mode, setMode] = useState<Professional3DMode>("analytical");
+  const [modeLoading, setModeLoading] = useState(false);
+  const [modeWarning, setModeWarning] = useState<string | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState<Professional3DFeature | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -66,8 +75,12 @@ export function Professional3DDialog({
   useEffect(() => {
     if (!open || !mapRef.current) return;
     let cancelled = false;
+    const controller = new AbortController();
     setLoadState("loading");
     setError(null);
+    setMode("analytical");
+    setModeWarning(null);
+    setSelectedFeature(null);
 
     void import("../lib/cesiumScene")
       .then(({ createProfessional3DScene }) => createProfessional3DScene(mapRef.current!, {
@@ -76,6 +89,8 @@ export function Professional3DDialog({
         lat,
         radiusKm,
         placeLabel,
+        signal: controller.signal,
+        onFeatureSelect: setSelectedFeature,
       }))
       .then((scene) => {
         if (cancelled) {
@@ -87,6 +102,7 @@ export function Professional3DDialog({
         scene.setLandUseVisible(landUseVisible);
         scene.setEvidenceVisible(evidenceVisible);
         scene.setBuildingsVisible(buildingsVisible);
+        scene.setVegetationVisible(vegetationVisible);
         setLoadState("ready");
       })
       .catch((reason: unknown) => {
@@ -97,6 +113,7 @@ export function Professional3DDialog({
 
     return () => {
       cancelled = true;
+      controller.abort();
       sceneRef.current?.destroy();
       sceneRef.current = null;
     };
@@ -114,6 +131,28 @@ export function Professional3DDialog({
     const next = !value;
     setValue(next);
     if (sceneRef.current) apply(sceneRef.current, next);
+  };
+
+  const changeMode = async (nextMode: Professional3DMode) => {
+    const active = sceneRef.current;
+    if (!active || nextMode === mode || modeLoading) return;
+    setModeLoading(true);
+    setModeWarning(null);
+    setSelectedFeature(null);
+    try {
+      const result = await active.setMode(nextMode);
+      setMode(result.mode);
+      setModeWarning(result.warning ?? null);
+    } catch (reason: unknown) {
+      setMode("analytical");
+      setModeWarning(
+        reason instanceof Error
+          ? reason.message
+          : "Photorealistic mode could not be loaded; Analytical mode has been restored.",
+      );
+    } finally {
+      setModeLoading(false);
+    }
   };
 
   return createPortal(
@@ -191,16 +230,44 @@ export function Professional3DDialog({
             </button>
           </div>
 
+          <div className={clsx("mt-3 grid grid-cols-2 rounded-xl p-1", dark ? "bg-gray-900" : "bg-slate-100")}>
+            {(["analytical", "photorealistic"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                disabled={loadState !== "ready" || modeLoading || (value === "photorealistic" && !scene?.photorealisticAvailable)}
+                onClick={() => void changeMode(value)}
+                className={clsx(
+                  "rounded-lg px-2 py-1.5 text-[11px] font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-40",
+                  mode === value
+                    ? dark ? "bg-sky-700 text-white" : "bg-white text-sky-800 shadow-sm"
+                    : dark ? "text-gray-400 hover:text-gray-200" : "text-slate-500 hover:text-slate-800",
+                )}
+              >
+                {modeLoading && value === "photorealistic" ? "Loading…" : value}
+              </button>
+            ))}
+          </div>
+
+          <p className={clsx("mt-2 text-[10px] leading-4", dark ? "text-gray-400" : "text-slate-500")}>
+            {mode === "analytical"
+              ? "Evidence-led terrain, Overture buildings and observed canopy zones."
+              : "Visual imagery context from Google; coverage and visible conditions may be incomplete or outdated."}
+          </p>
+          {modeWarning && <p className="mt-1 text-[10px] leading-4 text-amber-500" role="status">{modeWarning}</p>}
+
           <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
             {[
               {
                 label: "Observed land cover",
                 checked: landCoverVisible,
+                disabled: mode !== "analytical",
                 action: () => toggle(landCoverVisible, setLandCoverVisible, (active, value) => active.setLandCoverVisible(value)),
               },
               {
                 label: "Land-use reference",
                 checked: landUseVisible,
+                disabled: mode !== "analytical",
                 action: () => toggle(landUseVisible, setLandUseVisible, (active, value) => active.setLandUseVisible(value)),
               },
               {
@@ -209,10 +276,16 @@ export function Professional3DDialog({
                 action: () => toggle(evidenceVisible, setEvidenceVisible, (active, value) => active.setEvidenceVisible(value)),
               },
               {
-                label: "3D buildings",
+                label: "Analytical buildings",
                 checked: buildingsVisible,
-                disabled: !scene?.buildingsEnabled,
+                disabled: mode !== "analytical" || !scene?.buildingsEnabled,
                 action: () => toggle(buildingsVisible, setBuildingsVisible, (active, value) => active.setBuildingsVisible(value)),
+              },
+              {
+                label: "Canopy zones",
+                checked: vegetationVisible,
+                disabled: mode !== "analytical" || !scene?.vegetationEnabled,
+                action: () => toggle(vegetationVisible, setVegetationVisible, (active, value) => active.setVegetationVisible(value)),
               },
             ].map((item) => (
               <label
@@ -256,12 +329,55 @@ export function Professional3DDialog({
                 {scene?.terrainEnabled && scene.terrainExaggeration > 1
                   ? ` (${scene.terrainExaggeration.toFixed(2)}× relief emphasis)`
                   : ""}
-                {" · "}Buildings: {scene?.buildingsEnabled ? "available" : "not configured"}
+                {" · "}Buildings: {scene?.buildingStatus.featureCount.toLocaleString() ?? "0"}
+                {" · "}Canopy zones: {scene?.vegetationStatus.featureCount.toLocaleString() ?? "0"}
               </p>
               <p className="mt-1">
                 The reset view focuses on the nearest 3 km of site context; zoom out to inspect the full {radiusKm} km analysis radius.
               </p>
               {scene?.warnings.map((warning) => <p key={warning} className="mt-1 text-amber-500">{warning}</p>)}
+              {mode === "analytical" && (
+                <>
+                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1" aria-label="Analytical 3D legend">
+                    <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-sky-600" />Blue: published height</span>
+                    <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-slate-500" />Grey: floors-derived</span>
+                    <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-amber-600" />Amber: 6 m visual default</span>
+                    <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-green-700" />Green: observed canopy</span>
+                  </div>
+                  <p className="mt-2">
+                    Buildings: {" "}
+                    <a
+                      href="https://www.overturemaps.org/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline underline-offset-2"
+                    >
+                      Overture Maps contributors (ODbL)
+                    </a>
+                    . Canopy polygons are observed zones with illustrative height—not a tree inventory.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {selectedFeature && mode === "analytical" && (
+            <div className={clsx("mt-3 rounded-xl border p-2 text-[10px] leading-4", dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white")}>
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-semibold">{selectedFeature.title}</p>
+                <button type="button" onClick={() => setSelectedFeature(null)} className="text-xs" aria-label="Close feature details">×</button>
+              </div>
+              {selectedFeature.kind === "building" ? (
+                <p className={dark ? "text-gray-400" : "text-slate-500"}>
+                  Height basis: {String(selectedFeature.properties.height_basis ?? "unknown").replaceAll("_", " ")}
+                  {selectedFeature.properties.num_floors ? ` · ${String(selectedFeature.properties.num_floors)} published floors` : ""}
+                  {" · "}Overture release {String(selectedFeature.properties.release ?? "unknown")}
+                </p>
+              ) : (
+                <p className={dark ? "text-gray-400" : "text-slate-500"}>
+                  Satellite-observed tree cover, not an individual tree inventory or ecological survey.
+                </p>
+              )}
             </div>
           )}
         </aside>

@@ -33,6 +33,7 @@ app = Celery(
         "aia_etl.tasks.official_land_use",
         "aia_etl.tasks.environment",
         "aia_etl.tasks.projects",
+        "aia_etl.tasks.buildings",
     ],
 )
 
@@ -68,6 +69,10 @@ app.conf.beat_schedule = {
     "land-cover-monthly": {
         "task": "aia_etl.tasks.land_cover.refresh_land_cover",
         "schedule": crontab(minute=0, hour=4, day_of_month=2),
+    },
+    "buildings-monthly": {
+        "task": "aia_etl.tasks.buildings.refresh_buildings",
+        "schedule": crontab(minute=30, hour=4, day_of_month=2),
     },
     "environment-annual": {
         "task": "aia_etl.tasks.environment.refresh_environmental_metrics",

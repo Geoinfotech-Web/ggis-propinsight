@@ -28,6 +28,8 @@ LAYERS = (
     "population",
     "settlement",
     "projects",
+    "buildings_3d",
+    "vegetation_3d",
 )
 UNPUBLISHED = "unpublished"
 

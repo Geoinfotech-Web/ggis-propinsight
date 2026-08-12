@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from aia_etl.celery_app import app
 from aia_etl.config import get_settings
 from aia_etl.db import connect
 from aia_etl.layers import bump_layer, next_layer_version
+from aia_etl.sources.canopy import canopy_geometries
 from aia_etl.sources.worldcover import (
     DYNAMIC_WORLD_CLASSES,
     WORLD_COVER_CLASSES,
@@ -34,6 +36,75 @@ DYNAMIC_WORLD_NAME = "Google Dynamic World V1"
 DYNAMIC_WORLD_URL = (
     "https://developers.google.com/earth-engine/datasets/catalog/GOOGLE_DYNAMICWORLD_V1"
 )
+
+CANOPY_INSERT_SQL = text(
+    """
+    WITH source AS (
+      SELECT ST_SetSRID(ST_GeomFromGeoJSON(:geometry), 4326) AS geom
+    ), metric AS (
+      SELECT ST_Transform(ST_CollectionExtract(geom, 3), 3857) AS geom FROM source
+    ), prepared AS (
+      SELECT ST_Multi(ST_Transform(ST_CollectionExtract(ST_MakeValid(
+               geom
+             ), 3), 4326)) AS geom,
+             ST_Area(geom) / 10000.0 AS area_ha
+      FROM metric WHERE ST_Area(geom) >= 2500.0
+    )
+    INSERT INTO vegetation_canopy_areas (
+      source, source_url, period_start, period_end, resolution_m,
+      area_ha, layer_version, geom
+    )
+    SELECT :source, :source_url, :period_start, :period_end, :resolution_m,
+           area_ha, :layer_version, geom
+    FROM prepared WHERE geom IS NOT NULL AND NOT ST_IsEmpty(geom)
+    """
+)
+
+
+def _publish_canopy(
+    conn: Any,
+    *,
+    geometries: Iterable[dict[str, Any]],
+    source_name: str,
+    source_url: str,
+    period_start: date,
+    period_end: date,
+    resolution_m: int,
+) -> tuple[int, int, int]:
+    """Atomically replace the published canopy layer and return version/count/invalidations."""
+    vegetation_version = next_layer_version(conn, "vegetation_3d")
+    conn.execute(text("DELETE FROM vegetation_canopy_areas"))
+    canopy_payload: list[dict[str, Any]] = []
+    for geometry in geometries:
+        canopy_payload.append({
+            "geometry": json.dumps(geometry),
+            "source": source_name,
+            "source_url": source_url,
+            "period_start": period_start,
+            "period_end": period_end,
+            "resolution_m": resolution_m,
+            "layer_version": vegetation_version,
+        })
+        if len(canopy_payload) == 500:
+            conn.execute(CANOPY_INSERT_SQL, canopy_payload)
+            canopy_payload.clear()
+    if canopy_payload:
+        conn.execute(CANOPY_INSERT_SQL, canopy_payload)
+    canopy_count = int(
+        conn.execute(text("SELECT COUNT(*) FROM vegetation_canopy_areas")).scalar_one()
+    )
+    published, invalidated = bump_layer(
+        conn,
+        "vegetation_3d",
+        source=source_name,
+        notes=(
+            f"{canopy_count} connected observed tree-cover patches >= 0.25 ha; "
+            "not an individual tree inventory"
+        ),
+    )
+    if published != vegetation_version:
+        raise RuntimeError("vegetation layer version changed during publication")
+    return published, canopy_count, invalidated
 
 
 def _boundary_context() -> tuple[tuple[float, float, float, float], list[dict[str, Any]]]:
@@ -114,6 +185,8 @@ def refresh_land_cover(source: str | None = None) -> dict[str, Any]:
         classes = DYNAMIC_WORLD_CLASSES
         resolution_m = settings.land_cover_scale_m
 
+    canopy = canopy_geometries(out_path, classes, resolution_m)
+
     with connect() as conn:
         conn.execute(text("DELETE FROM land_cover_rasters"))
         conn.execute(
@@ -139,6 +212,15 @@ def refresh_land_cover(source: str | None = None) -> dict[str, Any]:
                 "layer_version": version,
             },
         )
+        vegetation_version, canopy_count, vegetation_invalidated = _publish_canopy(
+            conn,
+            geometries=canopy,
+            source_name=source_name,
+            source_url=source_url,
+            period_start=period_start,
+            period_end=period_end,
+            resolution_m=resolution_m,
+        )
         published, invalidated = bump_layer(
             conn,
             "land_cover",
@@ -158,6 +240,56 @@ def refresh_land_cover(source: str | None = None) -> dict[str, Any]:
         "period_end": period_end.isoformat(),
         "resolution_m": resolution_m,
         "scores_invalidated": invalidated,
+        "canopy_features": canopy_count,
+        "vegetation_version": vegetation_version,
+        "vegetation_scores_invalidated": vegetation_invalidated,
     }
     log.info("refresh_land_cover complete: %s", summary)
+    return summary
+
+
+@app.task(name="aia_etl.tasks.land_cover.refresh_vegetation_canopy")
+def refresh_vegetation_canopy() -> dict[str, Any]:
+    """Rebuild canopy zones from the currently published observed land-cover COG."""
+    with connect() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT source, source_url, raster_path, period_start, period_end,
+                       resolution_m, classes
+                FROM land_cover_rasters
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            )
+        ).mappings().one_or_none()
+    if row is None:
+        raise RuntimeError("No published land-cover raster is available for canopy generation")
+
+    raster_path = Path(str(row["raster_path"]))
+    if not raster_path.exists():
+        raise RuntimeError(f"Published land-cover raster is missing: {raster_path}")
+    classes = row["classes"]
+    if isinstance(classes, str):
+        classes = json.loads(classes)
+    geometries = canopy_geometries(raster_path, classes, int(row["resolution_m"]))
+    with connect() as conn:
+        version, feature_count, invalidated = _publish_canopy(
+            conn,
+            geometries=geometries,
+            source_name=str(row["source"]),
+            source_url=str(row["source_url"]),
+            period_start=row["period_start"],
+            period_end=row["period_end"],
+            resolution_m=int(row["resolution_m"]),
+        )
+    summary = {
+        "status": "published",
+        "version": version,
+        "source": str(row["source"]),
+        "raster_path": str(raster_path),
+        "feature_count": feature_count,
+        "scores_invalidated": invalidated,
+    }
+    log.info("refresh_vegetation_canopy complete: %s", summary)
     return summary

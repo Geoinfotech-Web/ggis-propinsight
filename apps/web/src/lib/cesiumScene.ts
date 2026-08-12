@@ -1,10 +1,32 @@
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import * as Cesium from "cesium";
-import { fetchLandUse, type Scorecard } from "../api";
+import {
+  fetchLandUse,
+  fetchProfessionalBuildings,
+  fetchProfessionalVegetation,
+  type Professional3DFeatureCollection,
+  type Scorecard,
+} from "../api";
 import { AMENITY_MARKER_COLORS, nearbyFromScorecard } from "./amenitiesMap";
 import { analysisBufferBounds } from "./analysisBufferMap";
 import { LAND_USE_COLORS } from "./landUseMap";
 import { mappedProjects } from "./projectsMap";
+
+export type Professional3DMode = "analytical" | "photorealistic";
+
+export type Professional3DFeature = {
+  kind: "building" | "vegetation";
+  title: string;
+  properties: Record<string, unknown>;
+};
+
+export type Professional3DLayerStatus = {
+  available: boolean;
+  featureCount: number;
+  totalCount: number;
+  truncated: boolean;
+  advisory: string;
+};
 
 export type Professional3DInput = {
   card: Scorecard;
@@ -12,6 +34,8 @@ export type Professional3DInput = {
   lat: number;
   radiusKm: number;
   placeLabel: string;
+  signal?: AbortSignal;
+  onFeatureSelect?: (feature: Professional3DFeature | null) => void;
 };
 
 export type Professional3DScene = {
@@ -19,18 +43,32 @@ export type Professional3DScene = {
   terrainLabel: string;
   terrainExaggeration: number;
   buildingsEnabled: boolean;
+  vegetationEnabled: boolean;
+  photorealisticAvailable: boolean;
+  buildingStatus: Professional3DLayerStatus;
+  vegetationStatus: Professional3DLayerStatus;
   warnings: string[];
   resetView: () => void;
+  setMode: (mode: Professional3DMode) => Promise<{ mode: Professional3DMode; warning?: string }>;
   setLandCoverVisible: (visible: boolean) => void;
   setLandUseVisible: (visible: boolean) => void;
   setEvidenceVisible: (visible: boolean) => void;
   setBuildingsVisible: (visible: boolean) => void;
+  setVegetationVisible: (visible: boolean) => void;
   destroy: () => void;
 };
 
 const LAND_COVER_BOUNDS = Cesium.Rectangle.fromDegrees(6.77, 8.41, 7.73, 9.42);
-function reportBounds(input: Professional3DInput): [number, number, number, number] {
-  const bounds = analysisBufferBounds(input.lon, input.lat, input.radiusKm) as [
+const EMPTY_LAYER_STATUS: Professional3DLayerStatus = {
+  available: false,
+  featureCount: 0,
+  totalCount: 0,
+  truncated: false,
+  advisory: "Layer unavailable.",
+};
+
+function siteBounds(input: Professional3DInput): [number, number, number, number] {
+  const bounds = analysisBufferBounds(input.lon, input.lat, Math.min(input.radiusKm, 3)) as [
     [number, number],
     [number, number],
   ];
@@ -99,7 +137,6 @@ async function createRasterTerrainProvider(): Promise<Cesium.CustomHeightmapTerr
   const sourceTileSize = metadata.tileSize ?? 512;
   const template = new URL(metadata.tiles[0], tileJsonUrl).toString();
   const cache = new Map<string, Promise<Float32Array>>();
-
   return new Cesium.CustomHeightmapTerrainProvider({
     width: TERRAIN_SAMPLE_SIZE,
     height: TERRAIN_SAMPLE_SIZE,
@@ -119,16 +156,11 @@ async function createRasterTerrainProvider(): Promise<Cesium.CustomHeightmapTerr
         .replace("{z}", String(sourceLevel))
         .replace("{x}", String(sourceX))
         .replace("{y}", String(sourceY));
-      const request = decodeTerrariumTile(
-        url,
-        sourceTileSize,
-        childX,
-        childY,
-        childGridSize,
-      ).catch((reason) => {
-        cache.delete(key);
-        throw reason;
-      });
+      const request = decodeTerrariumTile(url, sourceTileSize, childX, childY, childGridSize)
+        .catch((reason) => {
+          cache.delete(key);
+          throw reason;
+        });
       cache.set(key, request);
       if (cache.size > 96) cache.delete(cache.keys().next().value as string);
       return request;
@@ -150,6 +182,159 @@ function nearestEvidence(card: Scorecard) {
   return [...selected, ...police];
 }
 
+function layerStatus(layer: Professional3DFeatureCollection): Professional3DLayerStatus {
+  return {
+    available: layer.metadata.status === "published" && layer.features.length > 0,
+    featureCount: layer.metadata.feature_count,
+    totalCount: layer.metadata.total_count,
+    truncated: layer.metadata.truncated,
+    advisory: layer.metadata.advisory,
+  };
+}
+
+type PolygonCoordinates = number[][][];
+
+function featurePolygons(feature: Professional3DFeatureCollection["features"][number]): PolygonCoordinates[] {
+  if (feature.geometry.type === "Polygon") {
+    return [feature.geometry.coordinates as PolygonCoordinates];
+  }
+  return feature.geometry.coordinates as PolygonCoordinates[];
+}
+
+function polygonCentroid(rings: PolygonCoordinates): Cesium.Cartographic {
+  const outer = rings[0] ?? [];
+  const usable = outer.length > 1 ? outer.slice(0, -1) : outer;
+  const total = usable.reduce(
+    (value, coordinate) => ({ lon: value.lon + coordinate[0], lat: value.lat + coordinate[1] }),
+    { lon: 0, lat: 0 },
+  );
+  const divisor = Math.max(usable.length, 1);
+  return Cesium.Cartographic.fromDegrees(total.lon / divisor, total.lat / divisor);
+}
+
+function polygonHierarchy(rings: PolygonCoordinates): Cesium.PolygonHierarchy {
+  const positions = Cesium.Cartesian3.fromDegreesArray(rings[0].flatMap(([lon, lat]) => [lon, lat]));
+  const holes = rings.slice(1).map((ring) => new Cesium.PolygonHierarchy(
+    Cesium.Cartesian3.fromDegreesArray(ring.flatMap(([lon, lat]) => [lon, lat])),
+  ));
+  return new Cesium.PolygonHierarchy(positions, holes);
+}
+
+async function createExtrudedPrimitive(
+  viewer: Cesium.Viewer,
+  collection: Professional3DFeatureCollection,
+  kind: "building" | "vegetation",
+  signal?: AbortSignal,
+): Promise<Cesium.Primitive | null> {
+  const parts = collection.features.flatMap((feature) =>
+    featurePolygons(feature).map((rings) => ({ feature, rings })),
+  );
+  if (!parts.length) return null;
+  const samples = parts.map((part) => polygonCentroid(part.rings));
+  await Cesium.sampleTerrain(viewer.terrainProvider, 12, samples);
+  if (signal?.aborted) throw new DOMException("Professional 3D request aborted", "AbortError");
+  const instances = parts.map(({ feature, rings }, index) => {
+    const properties = feature.properties;
+    const displayHeight = Number(properties.display_height_m ?? (kind === "vegetation" ? 4 : 6));
+    const baseHeight = samples[index].height ?? 0;
+    const minHeight = kind === "building" ? Number(properties.min_height_m ?? 0) : 0;
+    const heightBasis = String(properties.height_basis ?? "default_visual");
+    const instanceColor = kind === "vegetation"
+      ? Cesium.Color.FORESTGREEN.withAlpha(0.48)
+      : heightBasis === "published_height"
+        ? Cesium.Color.STEELBLUE.withAlpha(0.82)
+        : heightBasis === "floors_derived"
+          ? Cesium.Color.SLATEGRAY.withAlpha(0.78)
+          : Cesium.Color.DARKGOLDENROD.withAlpha(0.72);
+    const title = kind === "vegetation"
+      ? "Observed canopy zone—height illustrative"
+      : `${String(properties.building_class ?? "Building").replaceAll("_", " ")} · ${displayHeight.toFixed(1)} m visual height`;
+    return new Cesium.GeometryInstance({
+      id: { kind, title, properties } satisfies Professional3DFeature,
+      geometry: new Cesium.PolygonGeometry({
+        polygonHierarchy: polygonHierarchy(rings),
+        height: baseHeight + minHeight,
+        extrudedHeight: baseHeight + minHeight + Math.max(displayHeight, 0.5),
+        vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
+        closeTop: true,
+        closeBottom: true,
+      }),
+      attributes: {
+        color: Cesium.ColorGeometryInstanceAttribute.fromColor(instanceColor),
+      },
+    });
+  });
+  return viewer.scene.primitives.add(new Cesium.Primitive({
+    geometryInstances: instances,
+    appearance: new Cesium.PerInstanceColorAppearance({
+      closed: true,
+      translucent: true,
+      flat: kind === "vegetation",
+    }),
+    asynchronous: true,
+    releaseGeometryInstances: true,
+  })) as Cesium.Primitive;
+}
+
+function addEvidence(viewer: Cesium.Viewer, input: Professional3DInput): Cesium.Entity[] {
+  const entities: Cesium.Entity[] = [];
+  for (const item of nearestEvidence(input.card)) {
+    const color = colour(AMENITY_MARKER_COLORS[item.category] ?? "#0d9488");
+    entities.push(viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(item.lon, item.lat),
+      point: {
+        pixelSize: 10,
+        color,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      },
+      label: {
+        text: item.name,
+        font: "600 12px 'Source Sans 3', sans-serif",
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK.withAlpha(0.8),
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, -18),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 28_000),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      },
+    }));
+  }
+  for (const project of mappedProjects(input.card).slice(0, 8)) {
+    if (project.geometry?.type !== "Point") continue;
+    const [lon, lat] = project.geometry.coordinates;
+    if (typeof lon !== "number" || typeof lat !== "number") continue;
+    entities.push(viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(lon, lat),
+      point: {
+        pixelSize: 11,
+        color: Cesium.Color.DARKORANGE,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      },
+      label: {
+        text: project.name,
+        font: "600 12px 'Source Sans 3', sans-serif",
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, -18),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 32_000),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      },
+    }));
+  }
+  return entities;
+}
+
 export async function createProfessional3DScene(
   container: HTMLElement,
   input: Professional3DInput,
@@ -157,17 +342,15 @@ export async function createProfessional3DScene(
   const warnings: string[] = [];
   const ionToken = import.meta.env.VITE_CESIUM_ION_TOKEN?.trim();
   if (ionToken) Cesium.Ion.defaultAccessToken = ionToken;
-
   let terrainProvider: Cesium.TerrainProvider | undefined;
   let terrainLabel = "base globe";
-  let ionAvailable = false;
+  const ionAvailable = Boolean(ionToken);
   if (ionToken) {
     try {
       terrainProvider = await Cesium.createWorldTerrainAsync({ requestVertexNormals: true });
       terrainLabel = "Cesium World Terrain";
-      ionAvailable = true;
     } catch {
-      warnings.push("The configured Cesium ion token was rejected, so raster elevation terrain is being used instead.");
+      warnings.push("The Cesium ion token could not load World Terrain; raster elevation is active.");
     }
   }
   if (!terrainProvider) {
@@ -178,15 +361,13 @@ export async function createProfessional3DScene(
       warnings.push("Elevation terrain could not be loaded; this view is using the flat base globe.");
     }
   }
+  if (input.signal?.aborted) throw new DOMException("Professional 3D request aborted", "AbortError");
 
-  const baseLayer = new Cesium.ImageryLayer(
-    new Cesium.UrlTemplateImageryProvider({
-      url: "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-      credit: "OpenStreetMap contributors / CARTO",
-      maximumLevel: 20,
-    }),
-  );
-
+  const baseLayer = new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
+    url: "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+    credit: "OpenStreetMap contributors / CARTO",
+    maximumLevel: 20,
+  }));
   const viewer = new Cesium.Viewer(container, {
     baseLayer,
     terrainProvider,
@@ -213,106 +394,76 @@ export async function createProfessional3DScene(
   viewer.scene.highDynamicRange = false;
   viewer.resolutionScale = window.innerWidth < 768 ? 0.72 : 0.9;
 
-  if (!ionAvailable) {
-    warnings.push("Add a valid VITE_CESIUM_ION_TOKEN to enable Cesium World Terrain and OSM 3D buildings.");
-  }
-
-  const landCoverLayer = new Cesium.ImageryLayer(
-    new Cesium.UrlTemplateImageryProvider({
-      url: `${window.location.origin}/v1/locations/land-cover/tiles/{z}/{x}/{y}.png`,
-      minimumLevel: 6,
-      maximumLevel: 12,
-      rectangle: LAND_COVER_BOUNDS,
-      credit: input.card.location.land_cover?.source ?? "Observed land cover",
-    }),
-    { alpha: 0.38, show: true },
-  );
+  const landCoverLayer = new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
+    url: `${window.location.origin}/v1/locations/land-cover/tiles/{z}/{x}/{y}.png`,
+    minimumLevel: 6,
+    maximumLevel: 12,
+    rectangle: LAND_COVER_BOUNDS,
+    credit: input.card.location.land_cover?.source ?? "Observed land cover",
+  }), { alpha: 0.38, show: true });
   viewer.imageryLayers.add(landCoverLayer);
 
+  const bounds = siteBounds(input);
+  const [landUseResult, buildingResult, vegetationResult] = await Promise.allSettled([
+    fetchLandUse(bounds),
+    fetchProfessionalBuildings(bounds, input.lon, input.lat, input.signal),
+    fetchProfessionalVegetation(bounds, input.lon, input.lat, input.signal),
+  ]);
+  if (input.signal?.aborted) {
+    viewer.destroy();
+    throw new DOMException("Professional 3D request aborted", "AbortError");
+  }
+
   let landUseSource: Cesium.GeoJsonDataSource | null = null;
-  try {
-    const landUse = await fetchLandUse(reportBounds(input));
-    if (landUse.features.length) {
-      landUseSource = await Cesium.GeoJsonDataSource.load(landUse as GeoJSON.FeatureCollection, {
+  if (landUseResult.status === "fulfilled" && landUseResult.value.features.length) {
+    landUseSource = await Cesium.GeoJsonDataSource.load(
+      landUseResult.value as GeoJSON.FeatureCollection,
+      {
         clampToGround: true,
         stroke: Cesium.Color.WHITE.withAlpha(0.85),
         strokeWidth: 1.5,
         fill: Cesium.Color.SLATEGRAY.withAlpha(0.3),
-      });
-      const now = Cesium.JulianDate.now();
-      for (const entity of landUseSource.entities.values) {
-        const properties = entity.properties?.getValue(now) as Record<string, unknown> | undefined;
-        const category = typeof properties?.category === "string" ? properties.category : "other";
-        if (entity.polygon) {
-          entity.polygon.material = new Cesium.ColorMaterialProperty(
-            colour(LAND_USE_COLORS[category] ?? LAND_USE_COLORS.other, 0.38),
-          );
-          entity.polygon.outline = new Cesium.ConstantProperty(false);
-        }
+      },
+    );
+    const now = Cesium.JulianDate.now();
+    for (const entity of landUseSource.entities.values) {
+      const properties = entity.properties?.getValue(now) as Record<string, unknown> | undefined;
+      const category = typeof properties?.category === "string" ? properties.category : "other";
+      if (entity.polygon) {
+        entity.polygon.material = new Cesium.ColorMaterialProperty(
+          colour(LAND_USE_COLORS[category] ?? LAND_USE_COLORS.other, 0.38),
+        );
+        entity.polygon.outline = new Cesium.ConstantProperty(false);
       }
-      await viewer.dataSources.add(landUseSource);
-    } else {
-      warnings.push("No mapped land-use reference polygons were returned for this analysis area.");
     }
-  } catch {
+    await viewer.dataSources.add(landUseSource);
+  } else if (landUseResult.status === "rejected") {
     warnings.push("The land-use reference overlay could not be loaded.");
   }
 
-  const evidenceEntities: Cesium.Entity[] = [];
-  for (const item of nearestEvidence(input.card)) {
-    const color = colour(AMENITY_MARKER_COLORS[item.category] ?? "#0d9488");
-    evidenceEntities.push(viewer.entities.add({
-      position: Cesium.Cartesian3.fromDegrees(item.lon, item.lat),
-      point: {
-        pixelSize: 10,
-        color,
-        outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 2,
-        disableDepthTestDistance: 35_000,
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-      },
-      label: {
-        text: item.name,
-        font: "600 12px 'Source Sans 3', sans-serif",
-        fillColor: Cesium.Color.WHITE,
-        outlineColor: Cesium.Color.BLACK.withAlpha(0.8),
-        outlineWidth: 3,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        pixelOffset: new Cesium.Cartesian2(0, -18),
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 28_000),
-        disableDepthTestDistance: 35_000,
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-      },
-    }));
+  const buildingCollection = buildingResult.status === "fulfilled" ? buildingResult.value : null;
+  const vegetationCollection = vegetationResult.status === "fulfilled" ? vegetationResult.value : null;
+  if (buildingResult.status === "rejected") warnings.push("Analytical buildings could not be loaded.");
+  if (vegetationResult.status === "rejected") warnings.push("Observed canopy zones could not be loaded.");
+  const buildingStatus = buildingCollection ? layerStatus(buildingCollection) : EMPTY_LAYER_STATUS;
+  const vegetationStatus = vegetationCollection ? layerStatus(vegetationCollection) : EMPTY_LAYER_STATUS;
+  if (buildingStatus.truncated) {
+    warnings.push(`Showing the nearest ${buildingStatus.featureCount.toLocaleString()} of ${buildingStatus.totalCount.toLocaleString()} analytical buildings.`);
+  }
+  if (vegetationStatus.truncated) {
+    warnings.push(`Showing ${vegetationStatus.featureCount.toLocaleString()} of ${vegetationStatus.totalCount.toLocaleString()} canopy zones.`);
   }
 
-  for (const project of mappedProjects(input.card).slice(0, 8)) {
-    if (project.geometry?.type !== "Point") continue;
-    const [lon, lat] = project.geometry.coordinates;
-    if (typeof lon !== "number" || typeof lat !== "number") continue;
-    evidenceEntities.push(viewer.entities.add({
-      position: Cesium.Cartesian3.fromDegrees(lon, lat),
-      point: {
-        pixelSize: 11,
-        color: Cesium.Color.DARKORANGE,
-        outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 2,
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-      },
-      label: {
-        text: project.name,
-        font: "600 12px 'Source Sans 3', sans-serif",
-        fillColor: Cesium.Color.WHITE,
-        outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 3,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        pixelOffset: new Cesium.Cartesian2(0, -18),
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 32_000),
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-      },
-    }));
-  }
+  const [buildingPrimitive, vegetationPrimitive] = await Promise.all([
+    buildingCollection
+      ? createExtrudedPrimitive(viewer, buildingCollection, "building", input.signal)
+      : Promise.resolve(null),
+    vegetationCollection
+      ? createExtrudedPrimitive(viewer, vegetationCollection, "vegetation", input.signal)
+      : Promise.resolve(null),
+  ]);
 
+  const evidenceEntities = addEvidence(viewer, input);
   viewer.entities.add({
     position: Cesium.Cartesian3.fromDegrees(input.lon, input.lat),
     ellipse: {
@@ -322,9 +473,9 @@ export async function createProfessional3DScene(
       outline: true,
       outlineColor: Cesium.Color.DEEPSKYBLUE.withAlpha(0.9),
       heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      classificationType: Cesium.ClassificationType.BOTH,
     },
   });
-
   const siteContext = [
     input.card.location.land_use
       ? `Land-use reference: ${input.card.location.land_use.label}`
@@ -356,20 +507,9 @@ export async function createProfessional3DScene(
     },
   });
 
-  let buildings: Cesium.Cesium3DTileset | null = null;
-  if (ionAvailable) {
-    try {
-      buildings = await Cesium.createOsmBuildingsAsync();
-      viewer.scene.primitives.add(buildings);
-    } catch {
-      warnings.push("Cesium OSM buildings are unavailable for this view or token.");
-    }
-  }
-
   const resetView = () => {
     const siteRadiusKm = Math.min(input.radiusKm, 3);
     const centre = Cesium.Cartesian3.fromDegrees(input.lon, input.lat, 0);
-    const range = Math.max(4_200, siteRadiusKm * 2_250);
     viewer.camera.flyToBoundingSphere(
       new Cesium.BoundingSphere(centre, siteRadiusKm * 1_000),
       {
@@ -377,38 +517,138 @@ export async function createProfessional3DScene(
         offset: new Cesium.HeadingPitchRange(
           Cesium.Math.toRadians(18),
           Cesium.Math.toRadians(-28),
-          range,
+          Math.max(4_200, siteRadiusKm * 2_250),
         ),
       },
     );
   };
-  resetView();
-  viewer.scene.requestRender();
 
+  let currentMode: Professional3DMode = "analytical";
+  let landCoverVisible = true;
+  let landUseVisible = true;
+  let buildingsVisible = true;
+  let vegetationVisible = true;
+  let photorealisticTileset: Cesium.Cesium3DTileset | null = null;
+
+  const applyAnalyticalVisibility = () => {
+    const analytical = currentMode === "analytical";
+    viewer.scene.globe.show = analytical;
+    baseLayer.show = analytical;
+    landCoverLayer.show = analytical && landCoverVisible;
+    if (landUseSource) landUseSource.show = analytical && landUseVisible;
+    if (buildingPrimitive) buildingPrimitive.show = analytical && buildingsVisible;
+    if (vegetationPrimitive) vegetationPrimitive.show = analytical && vegetationVisible;
+    if (photorealisticTileset) photorealisticTileset.show = !analytical;
+    viewer.scene.requestRender();
+  };
+
+  const loadPhotorealistic = async (): Promise<string | undefined> => {
+    if (!ionAvailable) return "A valid Cesium ion token is required for photorealistic mode.";
+    if (!photorealisticTileset) {
+      try {
+        const mobile = window.innerWidth < 768;
+        photorealisticTileset = await Cesium.createGooglePhotorealistic3DTileset(
+          { onlyUsingWithGoogleGeocoder: true },
+          {
+            showCreditsOnScreen: true,
+            maximumScreenSpaceError: mobile ? 24 : 16,
+            cacheBytes: (mobile ? 128 : 256) * 1024 * 1024,
+            maximumCacheOverflowBytes: (mobile ? 64 : 128) * 1024 * 1024,
+          },
+        );
+        viewer.scene.primitives.add(photorealisticTileset);
+      } catch {
+        photorealisticTileset = null;
+        return "Google Photorealistic 3D Tiles could not be loaded for this account.";
+      }
+    }
+    // Keep the analytical scene visible until photographic detail is confirmed.
+    photorealisticTileset.show = true;
+    viewer.scene.requestRender();
+    resetView();
+    const tileset = photorealisticTileset;
+    const detailedTileVisible = await new Promise<boolean>((resolve) => {
+      let settled = false;
+      let removeListener = () => {};
+      let timer = 0;
+      const finish = (visible: boolean) => {
+        if (settled) return;
+        settled = true;
+        removeListener();
+        window.clearTimeout(timer);
+        resolve(visible);
+      };
+      removeListener = tileset.tileVisible.addEventListener((tile) => {
+        if (tile.geometricError < 500) finish(true);
+      });
+      timer = window.setTimeout(() => finish(false), 12_000);
+      if (input.signal) input.signal.addEventListener("abort", () => finish(false), { once: true });
+    });
+    if (!detailedTileVisible) {
+      currentMode = "analytical";
+      applyAnalyticalVisibility();
+      resetView();
+      return "Detailed photographic 3D coverage is unavailable at this location; Analytical mode has been restored.";
+    }
+    currentMode = "photorealistic";
+    applyAnalyticalVisibility();
+    return undefined;
+  };
+
+  const pickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+  pickHandler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+    const picked = viewer.scene.pick(movement.position) as { id?: Professional3DFeature } | undefined;
+    const feature = picked?.id;
+    input.onFeatureSelect?.(
+      feature && (feature.kind === "building" || feature.kind === "vegetation") ? feature : null,
+    );
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+  resetView();
+  applyAnalyticalVisibility();
   return {
     terrainEnabled,
     terrainLabel,
     terrainExaggeration,
-    buildingsEnabled: Boolean(buildings),
+    buildingsEnabled: Boolean(buildingPrimitive),
+    vegetationEnabled: Boolean(vegetationPrimitive),
+    photorealisticAvailable: ionAvailable,
+    buildingStatus,
+    vegetationStatus,
     warnings,
     resetView,
+    setMode: async (mode) => {
+      if (mode === "analytical") {
+        currentMode = "analytical";
+        applyAnalyticalVisibility();
+        resetView();
+        return { mode: "analytical" };
+      }
+      const warning = await loadPhotorealistic();
+      return warning ? { mode: "analytical", warning } : { mode: "photorealistic" };
+    },
     setLandCoverVisible: (visible) => {
-      landCoverLayer.show = visible;
-      viewer.scene.requestRender();
+      landCoverVisible = visible;
+      applyAnalyticalVisibility();
     },
     setLandUseVisible: (visible) => {
-      if (landUseSource) landUseSource.show = visible;
-      viewer.scene.requestRender();
+      landUseVisible = visible;
+      applyAnalyticalVisibility();
     },
     setEvidenceVisible: (visible) => {
       evidenceEntities.forEach((entity) => { entity.show = visible; });
       viewer.scene.requestRender();
     },
     setBuildingsVisible: (visible) => {
-      if (buildings) buildings.show = visible;
-      viewer.scene.requestRender();
+      buildingsVisible = visible;
+      applyAnalyticalVisibility();
+    },
+    setVegetationVisible: (visible) => {
+      vegetationVisible = visible;
+      applyAnalyticalVisibility();
     },
     destroy: () => {
+      pickHandler.destroy();
       if (!viewer.isDestroyed()) viewer.destroy();
     },
   };

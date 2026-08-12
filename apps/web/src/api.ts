@@ -107,6 +107,26 @@ export type LandUseFeatureCollection = {
   };
 };
 
+export type Professional3DFeatureCollection = {
+  type: "FeatureCollection";
+  features: Array<{
+    type: "Feature";
+    id: string;
+    geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
+    properties: Record<string, unknown>;
+  }>;
+  metadata: {
+    status: "published" | "unpublished";
+    version: string | null;
+    source?: string | null;
+    source_url?: string;
+    total_count: number;
+    feature_count: number;
+    truncated: boolean;
+    advisory: string;
+  };
+};
+
 export type LandCoverInfo = {
   class_value: number;
   category: string;
@@ -194,4 +214,42 @@ export async function fetchLandUse(
   const res = await fetch(`/v1/locations/land-use?${params}`);
   if (!res.ok) throw new Error(`land-use layer failed: ${res.status}`);
   return res.json();
+}
+
+async function fetchProfessional3DLayer(
+  layer: "buildings" | "vegetation",
+  bounds: [number, number, number, number],
+  lon: number,
+  lat: number,
+  signal?: AbortSignal,
+): Promise<Professional3DFeatureCollection> {
+  const params = new URLSearchParams({
+    min_lon: bounds[0].toString(),
+    min_lat: bounds[1].toString(),
+    max_lon: bounds[2].toString(),
+    max_lat: bounds[3].toString(),
+    lon: lon.toString(),
+    lat: lat.toString(),
+  });
+  const response = await fetch(`/v1/locations/3d/${layer}?${params}`, { signal });
+  if (!response.ok) throw new Error(`${layer} 3D layer failed: ${response.status}`);
+  return response.json();
+}
+
+export function fetchProfessionalBuildings(
+  bounds: [number, number, number, number],
+  lon: number,
+  lat: number,
+  signal?: AbortSignal,
+) {
+  return fetchProfessional3DLayer("buildings", bounds, lon, lat, signal);
+}
+
+export function fetchProfessionalVegetation(
+  bounds: [number, number, number, number],
+  lon: number,
+  lat: number,
+  signal?: AbortSignal,
+) {
+  return fetchProfessional3DLayer("vegetation", bounds, lon, lat, signal);
 }

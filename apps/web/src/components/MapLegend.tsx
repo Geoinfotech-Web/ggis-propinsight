@@ -64,7 +64,7 @@ function LegendMoreButton({
       )}
       aria-expanded={expanded}
     >
-      {expanded ? `First ${GROUP_PREVIEW_SIZE}` : `More · ${hiddenCount}`}
+      {expanded ? "Show less" : `More · ${hiddenCount}`}
       {expanded ? <IconChevronUp size={11} /> : <IconChevronDown size={11} />}
     </button>
   );
@@ -80,7 +80,9 @@ export function MapLegend({
   securityCount,
 }: Props) {
   const [collapsed, setCollapsed] = useState(collapsedByDefault);
-  const [expandedGroup, setExpandedGroup] = useState<ExpandableGroup | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<ExpandableGroup>>(
+    () => new Set(),
+  );
   const dark = theme === "dark";
   const visibleOverlays = layers.filter(
     (layer) =>
@@ -96,15 +98,20 @@ export function MapLegend({
   const showLandUse = layers.some((l) => l.id === "land_use" && l.enabled);
   const showLandCover = layers.some((l) => l.id === "land_cover" && l.enabled);
   const toggleGroup = (group: ExpandableGroup) =>
-    setExpandedGroup((current) => (current === group ? null : group));
-  const visibleAmenities = expandedGroup === "amenities"
-    ? visibleAmenityLegend.slice(GROUP_PREVIEW_SIZE)
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  const visibleAmenities = expandedGroups.has("amenities")
+    ? visibleAmenityLegend
     : visibleAmenityLegend.slice(0, GROUP_PREVIEW_SIZE);
-  const visibleLandUse = expandedGroup === "land_use"
-    ? LAND_USE_LEGEND.slice(GROUP_PREVIEW_SIZE)
+  const visibleLandUse = expandedGroups.has("land_use")
+    ? LAND_USE_LEGEND
     : LAND_USE_LEGEND.slice(0, GROUP_PREVIEW_SIZE);
-  const visibleLandCover = expandedGroup === "land_cover"
-    ? LAND_COVER_LEGEND.slice(GROUP_PREVIEW_SIZE)
+  const visibleLandCover = expandedGroups.has("land_cover")
+    ? LAND_COVER_LEGEND
     : LAND_COVER_LEGEND.slice(0, GROUP_PREVIEW_SIZE);
 
   return (
@@ -222,7 +229,7 @@ export function MapLegend({
               </div>
               <LegendMoreButton
                 theme={theme}
-                expanded={expandedGroup === "amenities"}
+                expanded={expandedGroups.has("amenities")}
                 hiddenCount={visibleAmenityLegend.length - GROUP_PREVIEW_SIZE}
                 onClick={() => toggleGroup("amenities")}
               />
@@ -289,7 +296,7 @@ export function MapLegend({
               </div>
               <LegendMoreButton
                 theme={theme}
-                expanded={expandedGroup === "land_use"}
+                expanded={expandedGroups.has("land_use")}
                 hiddenCount={LAND_USE_LEGEND.length - GROUP_PREVIEW_SIZE}
                 onClick={() => toggleGroup("land_use")}
               />
@@ -335,7 +342,7 @@ export function MapLegend({
               </div>
               <LegendMoreButton
                 theme={theme}
-                expanded={expandedGroup === "land_cover"}
+                expanded={expandedGroups.has("land_cover")}
                 hiddenCount={LAND_COVER_LEGEND.length - GROUP_PREVIEW_SIZE}
                 onClick={() => toggleGroup("land_cover")}
               />

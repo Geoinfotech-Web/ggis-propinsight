@@ -54,6 +54,13 @@ provides wall-to-wall observed cover across FCT. Both are context—not statutor
 zoning; confirm allocations and development rights with AGIS/FCTA. A prepared
 AGIS/FCTA vector importer gives licensed official plans precedence when acquired.
 
+Investor and Developer reports also provide an on-demand professional 3D view.
+Its default Analytical mode uses the full published FCT subset of Overture
+building footprints and satellite-observed tree-canopy zones within the nearest
+3 km. Google Photorealistic 3D Tiles can be selected as visual imagery context
+when the configured Cesium ion account has coverage; it is never treated as an
+analytical source or cached into PropInsight data layers.
+
 Security resolves each point to its GRID3 ward and uses local police proximity.
 Ward incident aggregates are used only when a source actually publishes them;
 otherwise the report clearly labels the broader district fallback rather than
