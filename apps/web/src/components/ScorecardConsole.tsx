@@ -491,13 +491,19 @@ function DetailGroup({
 }) {
   return (
     <section className={clsx("rounded-lg border p-3", dark ? "border-gray-700 bg-gray-950/60" : "border-slate-200 bg-slate-50") }>
-      <p className={clsx("text-xs font-bold uppercase tracking-wider", dark ? "text-sky-300" : "text-sky-800")}>{title}</p>
-      <p className={clsx("mt-1 text-xs leading-5", dark ? "text-gray-300" : "text-slate-600")}>{description}</p>
-      <dl className="mt-3 space-y-2">
+      <p className={clsx("text-[10px] font-semibold uppercase tracking-widest", dark ? "text-sky-300" : "text-sky-800")}>{title}</p>
+      <p className={clsx("mt-1 text-[10px] leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>{description}</p>
+      <dl className="mt-2 space-y-0">
         {rows.map(([label, value]) => (
-          <div key={label} className="flex items-start justify-between gap-3 text-sm leading-5">
-            <dt className={clsx("min-w-0", dark ? "text-gray-300" : "text-slate-600")}>{label}</dt>
-            <dd className={clsx("max-w-[58%] text-right font-semibold tabular-nums", dark ? "text-white" : "text-slate-950")}>{value}</dd>
+          <div
+            key={label}
+            className={clsx(
+              "flex items-start justify-between gap-3 border-b py-1.5 last:border-0",
+              dark ? "border-gray-800/80" : "border-slate-100",
+            )}
+          >
+            <dt className={clsx("min-w-0 text-[10px] font-semibold uppercase tracking-widest", dark ? "text-gray-500" : "text-slate-400")}>{label}</dt>
+            <dd className={clsx("max-w-[58%] text-right text-[11px] font-medium tabular-nums", dark ? "text-white" : "text-slate-950")}>{value}</dd>
           </div>
         ))}
       </dl>
@@ -564,8 +570,8 @@ function FeasibilityDetails({ result, dark }: { result: DomainResult; dark: bool
             : "border-slate-200 bg-white text-slate-700 hover:border-slate-400",
       )}
     >
-      <span className="block truncate text-xs font-bold">{label}</span>
-      <span className={clsx("mt-0.5 block truncate text-[11px]", section === key ? "opacity-90" : "opacity-75")}>{summary}</span>
+      <span className="block truncate text-[10px] font-bold uppercase tracking-wide">{label}</span>
+      <span className={clsx("mt-0.5 block truncate text-[9px]", section === key ? "opacity-90" : "opacity-75")}>{summary}</span>
     </button>
   );
   return (

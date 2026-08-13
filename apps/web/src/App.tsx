@@ -119,7 +119,7 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
     label: "Observed land cover · entire FCT",
     description: "Wall-to-wall satellite classification; not zoning",
     swatch: "#397d49",
-    enabled: true,
+    enabled: false,
   },
   {
     id: "land_use",
