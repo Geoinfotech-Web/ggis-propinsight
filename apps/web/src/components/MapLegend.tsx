@@ -35,6 +35,7 @@ type Props = {
   radiusKm?: number;
   amenityCounts?: Record<string, number>;
   securityCount?: number;
+  analysisVisible?: boolean;
 };
 
 type ExpandableGroup = "amenities" | "land_use" | "land_cover";
@@ -78,25 +79,26 @@ export function MapLegend({
   radiusKm = 5,
   amenityCounts,
   securityCount,
+  analysisVisible = false,
 }: Props) {
   const [collapsed, setCollapsed] = useState(collapsedByDefault);
   const [expandedGroups, setExpandedGroups] = useState<Set<ExpandableGroup>>(
     () => new Set(),
   );
   const dark = theme === "dark";
-  const visibleOverlays = layers.filter(
+  const visibleOverlays = analysisVisible ? layers.filter(
     (layer) =>
       layer.enabled &&
       (layer.id === "score_marker" ||
         layer.id === "flood_context" ||
         layer.id === "government_projects"),
-  );
-  const visibleAmenityLegend = AMENITY_LEGEND.filter((item) =>
+  ) : [];
+  const visibleAmenityLegend = analysisVisible ? AMENITY_LEGEND.filter((item) =>
     layers.some((layer) => layer.id === item.id && layer.enabled),
-  );
-  const showSecurityCats = layers.some((l) => l.id === "security_poi" && l.enabled);
+  ) : [];
+  const showSecurityCats = analysisVisible && layers.some((l) => l.id === "security_poi" && l.enabled);
   const showLandUse = layers.some((l) => l.id === "land_use" && l.enabled);
-  const showLandCover = layers.some((l) => l.id === "land_cover" && l.enabled);
+  const showLandCover = analysisVisible && layers.some((l) => l.id === "land_cover" && l.enabled);
   const toggleGroup = (group: ExpandableGroup) =>
     setExpandedGroups((current) => {
       const next = new Set(current);
@@ -139,18 +141,20 @@ export function MapLegend({
           Legend
         </p>
         <span className="flex items-center gap-2">
-          <span
-            className={clsx(
-              "flex items-center gap-1.5 text-[10px] font-semibold tabular-nums",
-              dark ? "text-sky-300" : "text-sky-700",
-            )}
-          >
+          {analysisVisible && (
             <span
-              className="h-2.5 w-4 rounded-sm border-2 border-dashed border-sky-600 bg-sky-400/10"
-              aria-hidden
-            />
-            {radiusKm} km
-          </span>
+              className={clsx(
+                "flex items-center gap-1.5 text-[10px] font-semibold tabular-nums",
+                dark ? "text-sky-300" : "text-sky-700",
+              )}
+            >
+              <span
+                className="h-2.5 w-4 rounded-sm border-2 border-dashed border-sky-600 bg-sky-400/10"
+                aria-hidden
+              />
+              {radiusKm} km
+            </span>
+          )}
           <span className={dark ? "text-gray-500" : "text-slate-500"}>
             {collapsed ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
           </span>
@@ -159,7 +163,7 @@ export function MapLegend({
 
       {!collapsed && (
         <div className="grid grid-cols-2 items-start gap-x-3 gap-y-2 p-3">
-          <div className="col-span-2">
+          {analysisVisible && <div className="col-span-2">
             <p
               className={clsx(
                 "mb-1.5 text-[10px] font-semibold uppercase tracking-widest",
@@ -193,9 +197,9 @@ export function MapLegend({
                 dark ? "text-sky-300" : "text-sky-800",
               )}
             >
-              Flood uses a hazard score: higher means greater risk.
+              Flood uses a hazard index: higher means greater risk and lower is safer.
             </p>
-          </div>
+          </div>}
 
           {visibleAmenityLegend.length > 0 && (
             <div>

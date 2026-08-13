@@ -61,6 +61,13 @@ building footprints and satellite-observed tree-canopy zones within the nearest
 when the configured Cesium ion account has coverage; it is never treated as an
 analytical source or cached into PropInsight data layers.
 
+The committed Scorecard keeps its main actions compact: **Edit analysis** opens
+the audience/radius controls, and professional personas receive a separate
+icon-labelled **3D site view** button. A PDF export button appears in the header
+only after the user selects **View on map**. Before a report is committed, the
+map legend shows only the FCT land-use reference; report-specific score,
+amenity, security, land-cover, project, and buffer entries appear afterwards.
+
 Security resolves each point to its GRID3 ward and uses local police proximity.
 Ward incident aggregates are used only when a source actually publishes them;
 otherwise the report clearly labels the broader district fallback rather than
@@ -122,12 +129,24 @@ python -m pytest -q
 
 ## GGIS Flood Watch integration
 
-AIA never re-derives flood risk locally (TDD §5.3). Set
-`GGIS_FLOOD_DATA_MODE=live` only for a verified GGIS Flood Watch endpoint. Local
-Docker uses `mock`; its generated flood values are labelled as demo evidence and are
-excluded from fit scores, highlights, and feasibility. If a live service is
-unreachable, flood degrades to timestamped last-known evidence (or temporarily
-unavailable) while the rest of the scorecard still returns.
+Set `GGIS_FLOOD_DATA_MODE=live` with
+`GGIS_FLOOD_BASE_URL=https://api.gfw.ggis.africa`. The deployed Developer API
+authenticates with `X-API-Key` and exposes point susceptibility plus intersecting
+and nearby flood zones through `/v1/location/site-assessment`.
+
+GGIS currently publishes a susceptibility class rather than a numerical point
+hazard score. PropInsight therefore reports a transparent ordinal hazard index:
+Very Low = 10, Low = 25, Moderate = 50, High = 75, and Very High or Highly
+Susceptible = 90. The index is higher-is-worse and its inverse is used as the
+flood suitability contribution to fit and feasibility. It is decision-support
+classification—not flood probability, a surveyed level, or a replacement for
+site drainage investigation. The public report keeps this explanation concise;
+the mapping is documented here for auditability.
+
+Local mock values remain demo evidence and are excluded from fit, highlights,
+and feasibility. If the live service is unreachable, flood degrades to
+timestamped last-known evidence (or temporarily unavailable) while the rest of
+the scorecard still returns.
 
 ## Status
 

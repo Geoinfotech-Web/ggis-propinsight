@@ -232,6 +232,8 @@ export default function App() {
   const [pendingCard, setPendingCard] = useState<Scorecard | null>(null);
   const [analysisFlowError, setAnalysisFlowError] = useState<string | null>(null);
   const [pdfStatus, setPdfStatus] = useState<PdfGenerationStatus>("idle");
+  const [committedPdfStatus, setCommittedPdfStatus] = useState<PdfGenerationStatus>("idle");
+  const [committedPdfError, setCommittedPdfError] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [basemapId, setBasemapId] = useState<BasemapId>(DEFAULT_BASEMAP_ID);
   const [view3D, setView3D] = useState(false);
@@ -487,6 +489,8 @@ export default function App() {
     setAnalysisPhase("setup");
     setPdfStatus("idle");
     setPdfError(null);
+    setCommittedPdfStatus("idle");
+    setCommittedPdfError(null);
   }, [candidate, layerEnabled, pendingCard, setupPersona, setupRadiusKm]);
 
   const generatePendingReport = useCallback(async () => {
@@ -516,6 +520,40 @@ export default function App() {
       if (pdfAbortRef.current === controller) pdfAbortRef.current = null;
     }
   }, [candidate, pendingCard, setupPersona, setupRadiusKm]);
+
+  const generateCommittedReport = useCallback(async () => {
+    const selected = lastPointRef.current;
+    if (!selected || !card) return;
+    pdfAbortRef.current?.abort();
+    const controller = new AbortController();
+    pdfAbortRef.current = controller;
+    setCommittedPdfStatus("generating");
+    setCommittedPdfError(null);
+    try {
+      const { generateLocationReport } = await import("./lib/reportPdf");
+      const committedPersona = (
+        ["home_buyer", "tenant", "investor", "developer"] as string[]
+      ).includes(card.persona?.key ?? "")
+        ? (card.persona?.key as PersonaKey)
+        : persona;
+      await generateLocationReport({
+        card,
+        persona: committedPersona,
+        lon: selected.lon,
+        lat: selected.lat,
+        radiusKm: analysisRadiusKm,
+        placeLabel: placeLabel ?? `${selected.lat.toFixed(5)}, ${selected.lon.toFixed(5)}`,
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) setCommittedPdfStatus("downloaded");
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      setCommittedPdfStatus("error");
+      setCommittedPdfError((err as Error).message || "The PDF exporter could not finish.");
+    } finally {
+      if (pdfAbortRef.current === controller) pdfAbortRef.current = null;
+    }
+  }, [analysisRadiusKm, card, persona, placeLabel]);
 
   const changeAnalysisRadius = (radiusKm: number) => {
     analysisAbortRef.current?.abort();
@@ -956,6 +994,8 @@ export default function App() {
     setAnalysisFlowError(null);
     setPdfStatus("idle");
     setPdfError(null);
+    setCommittedPdfStatus("idle");
+    setCommittedPdfError(null);
     markerRef.current?.remove();
     markerRef.current = null;
     candidateMarkerRef.current?.remove();
@@ -1006,7 +1046,16 @@ export default function App() {
         searchResetKey={searchResetKey}
         reportGuideAvailable={Boolean(card)}
         onOpenReportGuide={() => setReportGuideOpen(true)}
+        reportAvailable={Boolean(card && committedPoint && !candidate)}
+        reportGenerating={committedPdfStatus === "generating"}
+        onGenerateReport={() => void generateCommittedReport()}
       />
+
+      {committedPdfError && (
+        <div className="absolute right-4 top-20 z-50 max-w-sm rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 shadow-lg">
+          Report export failed: {committedPdfError}
+        </div>
+      )}
 
       <div className="relative flex min-h-0 flex-1 flex-row">
         {desktopReportOpen && (
@@ -1136,6 +1185,7 @@ export default function App() {
                 radiusKm={displayRadiusKm}
                 amenityCounts={legendAmenityCounts}
                 securityCount={legendSecurityCount}
+                analysisVisible={Boolean(card && committedPoint && !candidate)}
               />
             </div>
           </div>

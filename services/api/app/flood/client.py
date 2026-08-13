@@ -74,6 +74,7 @@ def _sign(method: str, path: str, body: bytes, ts: str) -> str:
 def _headers(method: str, path: str, body: bytes) -> dict[str, str]:
     ts = str(int(time.time()))
     return {
+        "X-API-Key": settings.ggis_flood_api_key,
         "X-GGIS-Key": settings.ggis_flood_api_key,
         "X-GGIS-Timestamp": ts,
         "X-GGIS-Signature": _sign(method, path, body, ts),
@@ -86,11 +87,81 @@ class GGISFloodClient:
         self.base_url = (base_url or settings.ggis_flood_base_url).rstrip("/")
         self.timeout = (timeout_ms or settings.ggis_flood_timeout_ms) / 1000.0
         self.data_mode = settings.ggis_flood_data_mode
+        self._contract: str | None = None
+        self._model_version: str | None = None
+
+    @staticmethod
+    def _point(geometry: dict[str, Any]) -> tuple[float, float] | None:
+        coordinates = geometry.get("coordinates")
+        if geometry.get("type") == "Point" and isinstance(coordinates, list):
+            if len(coordinates) >= 2:
+                return float(coordinates[0]), float(coordinates[1])
+        if geometry.get("type") == "Polygon" and isinstance(coordinates, list):
+            ring = coordinates[0] if coordinates else []
+            if isinstance(ring, list) and ring:
+                points = [point for point in ring if isinstance(point, list) and len(point) >= 2]
+                if points:
+                    return (
+                        sum(float(point[0]) for point in points) / len(points),
+                        sum(float(point[1]) for point in points) / len(points),
+                    )
+        return None
+
+    async def _developer_risk(self, geometry: dict[str, Any]) -> FloodResult:
+        point = self._point(geometry)
+        if point is None:
+            return self._degrade(None, "GGIS site assessment requires a valid point")
+        lon, lat = point
+        path = "/v1/location/site-assessment"
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(
+                f"{self.base_url}{path}",
+                params={"lon": lon, "lat": lat, "radius_km": 10},
+                headers=_headers("GET", path, b""),
+            )
+            response.raise_for_status()
+            data = response.json()
+        self._contract = "developer"
+        risk_class = data.get("susceptibility")
+        risk_score = validated_risk_score(data.get("risk_score"))
+        generated_at = data.get("generated_at")
+        factors = {
+            "susceptibility_class": data.get("susceptibility_class"),
+            "hazard_index_eligible": True,
+            "zones_inside": data.get("zones_inside", []),
+            "zones_nearby": data.get("zones_nearby", []),
+            "assessment_radius_km": data.get("radius_km"),
+        }
+        return FloodResult(
+            status=FloodStatus.OK,
+            risk_class=str(risk_class) if risk_class else None,
+            risk_score=risk_score,
+            normalised=None if risk_score is None else 1.0 - risk_score,
+            factors=factors,
+            model_version=data.get("model_version") or self._model_version,
+            data_currency=str(generated_at) if generated_at else None,
+            confidence="Medium" if risk_class else "Low",
+            message=(
+                None
+                if risk_score is not None
+                else (
+                    "Live GGIS classification is available; a numerical hazard score "
+                    "was not published."
+                )
+            ),
+            data_mode=self.data_mode,
+        )
 
     async def risk(
         self, geometry: dict[str, Any], last_known: FloodResult | None = None
     ) -> FloodResult:
         """Live risk query. Falls back to `last_known` (timestamped) on failure."""
+        if self._contract == "developer":
+            try:
+                return await self._developer_risk(geometry)
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                return self._degrade(last_known, str(exc))
+
         path = "/v1/flood/risk"
         body = json.dumps({"geometry": geometry, "detail": "full"}).encode()
         try:
@@ -98,6 +169,8 @@ class GGISFloodClient:
                 resp = await c.post(
                     f"{self.base_url}{path}", content=body, headers=_headers("POST", path, body)
                 )
+                if resp.status_code in {404, 405}:
+                    return await self._developer_risk(geometry)
                 resp.raise_for_status()
                 data = resp.json()
         except (httpx.HTTPError, ValueError) as exc:
@@ -125,6 +198,8 @@ class GGISFloodClient:
         self, lon: float | None = None, lat: float | None = None
     ) -> list[dict[str, Any]]:
         """Observed inundation events near a point (Phase 1: global list from GGIS)."""
+        if self._contract == "developer":
+            return []
         path = "/v1/flood/history"
         params: dict[str, float] = {}
         if lon is not None and lat is not None:
@@ -178,8 +253,30 @@ class GGISFloodClient:
         path = "/v1/meta/model"
         async with httpx.AsyncClient(timeout=self.timeout) as c:
             resp = await c.get(f"{self.base_url}{path}", headers=_headers("GET", path, b""))
+            if resp.status_code in {404, 405}:
+                health_path = "/v1/health"
+                health = await c.get(
+                    f"{self.base_url}{health_path}",
+                    headers=_headers("GET", health_path, b""),
+                )
+                health.raise_for_status()
+                data = health.json()
+                version = data.get("version") if isinstance(data, dict) else None
+                self._model_version = f"developer-api-{version}" if version else None
+                self._contract = "developer"
+                if isinstance(data, dict):
+                    return {
+                        **data,
+                        "model_version": self._model_version,
+                        "data_currency": data.get("time"),
+                    }
+                return data
             resp.raise_for_status()
-            return resp.json()
+            self._contract = "legacy"
+            data = resp.json()
+            if isinstance(data, dict) and data.get("model_version"):
+                self._model_version = str(data["model_version"])
+            return data
 
 
 def get_flood_client() -> GGISFloodClient:

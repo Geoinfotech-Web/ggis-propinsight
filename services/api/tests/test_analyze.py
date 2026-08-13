@@ -188,6 +188,33 @@ async def test_invalid_flood_hazard_score_is_not_invented(risk_score):  # noqa: 
 
 
 @pytest.mark.asyncio
+async def test_live_ggis_class_produces_disclosed_propinsight_hazard_index():
+    flood = FloodResult(
+        status=FloodStatus.OK,
+        risk_class="Moderate",
+        risk_score=None,
+        normalised=None,
+        factors={"hazard_index_eligible": True, "susceptibility_class": 2},
+        model_version="developer-api-1.0.0",
+        data_currency="2026-08-13T14:25:05Z",
+        confidence="Medium",
+        data_mode="live",
+    )
+    result = (await analyze(_req(), flood=_StubFlood(flood))).domains["flood"]  # type: ignore[arg-type]
+
+    assert result.score == 50.0
+    assert result.rating == "Moderate flood risk"
+    assert result.status == "ok"
+    assert result.included_in_fit is True
+    assert result.evidence["hazard_index"] == 50.0
+    assert "risk_score" not in result.evidence
+    assert "hazard_index_source" not in result.evidence
+    assert "hazard_index_method" not in result.evidence
+    assert "hazard_index_eligible" not in result.evidence
+    assert "Lower hazard values are safer" in (result.note or "")
+
+
+@pytest.mark.asyncio
 async def test_mock_flood_is_demo_and_excluded_from_report_fit_and_highlights(monkeypatch):
     captured: dict[str, float | None] = {}
 

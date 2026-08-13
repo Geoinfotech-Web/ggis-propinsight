@@ -37,6 +37,7 @@ def _headers(method: str, path: str, body: bytes = b"") -> dict[str, str]:
     payload = f"{method}\n{path}\n{ts}\n{body_hash}".encode()
     sig = hmac.new(settings.ggis_flood_hmac_secret.encode(), payload, hashlib.sha256).hexdigest()
     return {
+        "X-API-Key": settings.ggis_flood_api_key,
         "X-GGIS-Key": settings.ggis_flood_api_key,
         "X-GGIS-Timestamp": ts,
         "X-GGIS-Signature": sig,

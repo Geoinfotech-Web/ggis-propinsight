@@ -1,6 +1,6 @@
 # GGIS PropInsight (AIA) — Handoff
 
-_Last updated: 2026-08-05_
+_Last updated: 2026-08-13_
 
 Engineering handoff for **GGIS PropInsight** (internal codename **AIA**), a location
 intelligence web platform for the Nigerian property market. Pilot: **FCT / Abuja**.
@@ -14,23 +14,23 @@ Project Overview (v1.2), Technical Design Document (v1.1), and Implementation Pl
 | Area | State |
 |---|---|
 | Monorepo scaffold (api / etl / web / infra) | ✅ done |
-| GGIS Flood Watch client + graceful degradation (TDD §5.3) | ✅ done, live via mock |
-| PostGIS schema v1 (TDD §6.1) + Alembic (0001–0008) | ✅ done |
+| GGIS Flood Watch client + graceful degradation (TDD §5.3) | ✅ live Developer API adapter + mock fallback |
+| PostGIS schema v1 (TDD §6.1) + Alembic (0001–0016) | ✅ done |
 | Scoring engine (weighted multi-criteria, TDD §4.4) | ✅ done |
 | `analyze` path: layer_registry stamping + Redis cache (TDD §2.2, §10) | ✅ done |
 | ETL package: `layer_version` discipline, OSM/DEM/flood tasks | ✅ done |
-| Google Earth Engine DEM source | ⚠️ code done; **blocked on GCP IAM** (see §5) |
-| React + MapLibre web shell (click-to-analyse) | ✅ runs locally |
+| Google Earth Engine environmental source | ✅ authenticated and published locally |
+| React + MapLibre guided analysis + PDF export | ✅ runs locally |
 | CI (api + etl + web) | ✅ done |
 | Multi-source POIs (Overpass + Overture + GRID3) | ✅ adapters configured; transactional publish + QA gates added |
-| Amenity / accessibility / feasibility domains | ⚠️ amenities has live Overpass data; roads and DEM remain demo-backed until production ETL runs |
+| Amenity / accessibility / feasibility domains | ✅ active; verify remaining demo-labelled road provenance before production |
 | FCT land context | ✅ GRID3-clipped Overture uses + full-FCT ESA WorldCover 10 m observed cover published |
 | Official AGIS/FCTA planning import | ✅ importer ready; ⚠️ licensed vector dataset and web-reuse permission still required |
 
-**Flood** and **amenities** have live sources. Accessibility, feasibility,
-security, and tenure can score locally but are still backed wholly or partly by
-demo-seeded layers. Market and livability remain pending. Demo provenance must
-remain visible until production layers pass QA and publish.
+Flood, amenities, market, Habitability, terrain feasibility, land context, and
+professional development context are active locally. Some roads, security, and
+planning registry versions remain demo-labelled and must be replaced before a
+production launch.
 
 ---
 
@@ -52,7 +52,8 @@ Containers are **up** so the app can be explored (project name `aia`):
 > `docker-compose.yml` and `apps/web/vite.config.ts` (proxy → 8001).
 
 ### Explore it
-- Open the web app and **click any point on the map** → live scorecard.
+- Open the web app and search, geolocate, or click the map → choose a persona and
+  radius → analyse → select **View on map**.
 - API docs / try endpoints: http://localhost:8001/docs
 - Prove the GGIS integration: `curl http://localhost:8001/v1/meta/flood`
 - Sample analyze call:
@@ -80,8 +81,8 @@ docker compose up -d etl-worker etl-beat
 
 ### Tests
 ```bash
-cd services/api && pip install -e ".[dev]" && pytest -q      # 64 tests
-cd etl && pip install -e ".[dev]" && pytest -q               # 46 tests
+cd services/api && pip install -e ".[dev]" && pytest -q      # 99 tests
+cd etl && pip install -e ".[dev]" && pytest -q               # 70 tests
 ```
 
 ---
@@ -90,39 +91,25 @@ cd etl && pip install -e ".[dev]" && pytest -q               # 46 tests
 
 - `.env` (gitignored) holds the real secrets: GGIS Flood Watch key/HMAC, JWT secret,
   and GEE service-account details. Never commit it. `.env.example` documents every var.
-- **`ggis-flood-watch-<hash>.json`** — the GCP service-account key file sits in the
-  repo root. It is **gitignored** and confirmed absent from git history. Consider
-  moving it out of the repo (e.g. `~/.config/gee/`) and updating
-  `GEE_SERVICE_ACCOUNT_KEY` to the new path.
+- The Earth Engine service-account credential is supplied through the configured
+  local secret path or JSON environment value. It must remain outside version
+  control; never record its filename or contents in public documentation.
 - **`docker-compose.override.yml`** (gitignored, local only) mounts that key into the
   ETL containers at `/secrets/gee-key.json` so Earth Engine can authenticate.
 
 ---
 
-## 5. Known blocker: Google Earth Engine IAM
+## 5. Google Earth Engine status
 
-The DEM-from-GEE task authenticates successfully but fails with:
-
-> `Caller does not have required permission to use project ggis-flood-watch.
-> Grant the caller the roles/serviceusage.serviceUsageConsumer role...`
-
-**To unblock (Google Cloud console, project `ggis-flood-watch`):**
-1. Grant the service account the **Service Usage Consumer**
-   (`roles/serviceusage.serviceUsageConsumer`) role.
-2. **Enable the Earth Engine API** on the project.
-3. Ensure the project is **registered for Earth Engine** (code.earthengine.google.com).
-
-If Earth Engine lives under a different Cloud project, set `GEE_PROJECT=<that-project>`
-in `.env` instead (the code otherwise parses the project from the SA email).
-
-**Then run:**
+Earth Engine IAM is configured. The current environment task publishes terrain,
+land-cover/heat context, population and settlement evidence to local versioned
+layers. To refresh:
 ```bash
 docker compose run --rm etl-worker python -c \
   "from aia_etl.tasks.dem import dem_from_gee; print(dem_from_gee(bbox=[7.44,9.03,7.54,9.10], scale=30))"
 ```
-Produces `slope.tif`, `flow_accumulation.tif`, `twi.tif` COGs (in the `geodata`
-volume) and bumps the `dem` layer. Keep the AOI small — `getDownloadURL` caps at a
-few tens of MB; tile the bbox or use `Export.image.toCloudStorage` for all of FCT.
+Keep direct `getDownloadURL` requests spatially bounded; use tiled exports for
+full-FCT refreshes.
 
 ---
 
@@ -134,7 +121,11 @@ few tens of MB; tile the bbox or use `Export.image.toCloudStorage` for all of FC
   is the shared source of truth; ETL `bump_layer` publishes a new version and
   `sweep_stale_scores` invalidates dependent DB scores. The Redis cache key includes
   the layer versions, so a bump changes the key and the next request recomputes.
-- **Flood science stays in GGIS Flood Watch** — AIA never re-derives flood risk.
+- **Flood evidence stays anchored to GGIS Flood Watch.** The current Developer
+  API returns a class, not a point score, so PropInsight converts that class to
+  an audited ordinal hazard index: Very Low 10, Low 25, Moderate 50, High 75,
+  Very High/Highly Susceptible 90. Never describe it as probability or a
+  GGIS-published numerical score.
 
 Key files:
 - `services/api/app/flood/client.py` — GGIS client + graceful degradation.
@@ -150,6 +141,8 @@ Key files:
 - `etl/aia_etl/tasks/official_land_use.py` — licensed AGIS/FCTA vector importer.
 - `services/api/app/location_intelligence/land_use.py` — viewport GeoJSON and point classification; AGIS advisory boundary.
 - `services/api/app/location_intelligence/land_cover.py` — observed-cover point sampling, metadata, and PNG tiles.
+- `services/api/app/location_intelligence/professional_3d.py` — bounded Overture building and canopy evidence endpoints.
+- `apps/web/src/components/ScorecardConsole.tsx` — compact Edit analysis / 3D site-view actions and domain cards.
 
 ---
 
@@ -159,8 +152,8 @@ Key files:
    and GRID3; review coverage, duplicates, attribution, and category counts before publish.
 2. **Run the canonical OSM roads publish** from a current Geofabrik extract, then
    replace straight-line accessibility proxies with OSRM/Valhalla travel times.
-3. **Unblock GEE IAM** (§5), run `dem_from_gee`, and verify the generated COGs plus
-   the API-facing 1 km DEM sample grid before replacing demo terrain data.
+3. **Replace remaining demo-labelled road, security, and planning layers** with
+   QA-gated production publications.
 4. **Implement the GGIS hazard coverage export** before enabling hazard mirroring;
    the current task intentionally reports `blocked` rather than publishing an empty COG.
 5. **Persist scorecards to the `scores` table** (not just Redis) so the ETL
@@ -171,9 +164,8 @@ Key files:
 8. **Acquire the official AGIS land-use/masterplan vectors and reuse approval**;
    run `aia_etl.tasks.official_land_use.import_official_land_use`. The API/UI
    already give `official_masterplan` precedence over Overture/OSM reference use.
-9. **Unblock Dynamic World freshness** by granting the GEE service account
-   `roles/serviceusage.serviceUsageConsumer`; `refresh_land_cover` will then
-   replace the 2021 ESA fallback with a current modal Dynamic World composite.
+9. **Review Dynamic World freshness** periodically; ESA WorldCover remains the
+   explicit fallback when a current GEE composite cannot pass publication QA.
 
 ---
 

@@ -534,7 +534,7 @@ function domainLine(card: Scorecard, domain: string): { title: string; detail: s
   const score = result.score == null
     ? "Unavailable"
     : domain === "flood"
-      ? `${result.score.toFixed(0)} hazard`
+      ? `${result.score.toFixed(0)} hazard index`
       : `${result.score.toFixed(0)}`;
   const limited = result.status === "demo" || result.status === "degraded"
     ? "limited evidence"

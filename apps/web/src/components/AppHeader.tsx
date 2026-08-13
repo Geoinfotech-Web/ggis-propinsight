@@ -17,6 +17,9 @@ type Props = {
   searchResetKey?: number;
   reportGuideAvailable?: boolean;
   onOpenReportGuide: () => void;
+  reportAvailable?: boolean;
+  reportGenerating?: boolean;
+  onGenerateReport: () => void;
 };
 
 /**
@@ -34,6 +37,9 @@ export function AppHeader({
   searchResetKey,
   reportGuideAvailable = false,
   onOpenReportGuide,
+  reportAvailable = false,
+  reportGenerating = false,
+  onGenerateReport,
 }: Props) {
   const dark = theme === "dark";
   const [geoBusy, setGeoBusy] = useState(false);
@@ -173,6 +179,30 @@ export function AppHeader({
               <span className="sm:hidden">Guide</span>
               <span className="hidden sm:inline">Report guide</span>
             </button>
+
+            {reportAvailable && (
+              <button
+                type="button"
+                onClick={onGenerateReport}
+                disabled={reportGenerating}
+                className={clsx(
+                  "inline-flex h-9 items-center justify-center rounded-lg border px-2.5 text-[11px] font-semibold transition sm:h-8",
+                  reportGenerating && "cursor-wait opacity-60",
+                  dark
+                    ? "border-teal-700 text-teal-300 hover:bg-teal-950/50"
+                    : "border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100",
+                )}
+                aria-label="Generate PDF report"
+                title="Download this location report as a PDF"
+              >
+                {reportGenerating ? "Generating…" : (
+                  <>
+                    <span className="sm:hidden">PDF</span>
+                    <span className="hidden sm:inline">Generate report</span>
+                  </>
+                )}
+              </button>
+            )}
 
             <button
               type="button"

@@ -155,19 +155,43 @@ def _pending(domain: str, versions: dict[str, str]) -> DomainResult:
 
 
 def _flood_evidence(fr: Any) -> dict[str, Any]:
+    public_factors = {
+        key: value
+        for key, value in (fr.factors or {}).items()
+        if key != "hazard_index_eligible"
+    }
     evidence: dict[str, Any] = {
         "risk_class": fr.risk_class,
-        "risk_score": fr.risk_score,
         "data_mode": getattr(fr, "data_mode", "live"),
         "model_version": fr.model_version,
         "data_currency": fr.data_currency,
-        **(fr.factors or {}),
+        **public_factors,
     }
     if fr.last_event:
         evidence["last_event"] = fr.last_event
     if fr.history_events:
         evidence["history_events"] = fr.history_events[:5]
     return evidence
+
+
+CLASS_DERIVED_HAZARD: dict[str, float] = {
+    "very low": 0.10,
+    "low": 0.25,
+    "moderate": 0.50,
+    "high": 0.75,
+    "very high": 0.90,
+    "highly susceptible": 0.90,
+}
+
+
+def _class_derived_hazard(fr: Any) -> float | None:
+    """Map the live GGIS susceptibility class to a transparent ordinal index."""
+    factors = fr.factors if isinstance(fr.factors, dict) else {}
+    if factors.get("hazard_index_eligible") is not True:
+        return None
+    if not isinstance(fr.risk_class, str):
+        return None
+    return CLASS_DERIVED_HAZARD.get(fr.risk_class.strip().lower())
 
 
 def _flood_rating(risk_class: Any) -> str | None:
@@ -503,7 +527,18 @@ async def analyze(
         except Exception:  # noqa: BLE001 — history is enrichment, never fail analyze
             fr.history_events = []
 
-    hazard_fraction = validated_risk_score(fr.risk_score)
+    upstream_hazard_fraction = validated_risk_score(fr.risk_score)
+    derived_hazard_fraction = (
+        _class_derived_hazard(fr) if upstream_hazard_fraction is None else None
+    )
+    hazard_fraction = (
+        upstream_hazard_fraction
+        if upstream_hazard_fraction is not None
+        else derived_hazard_fraction
+    )
+    hazard_is_class_derived = (
+        upstream_hazard_fraction is None and derived_hazard_fraction is not None
+    )
     flood_is_demo = flood_data_mode == "mock"
     flood_included_in_fit = (
         fr.status is FloodStatus.OK and not flood_is_demo and hazard_fraction is not None
@@ -512,6 +547,8 @@ async def analyze(
         1.0 - hazard_fraction if flood_included_in_fit and hazard_fraction is not None else None
     )
     flood_rating = _flood_rating(fr.risk_class)
+    if hazard_fraction is not None:
+        fr.factors["hazard_index"] = round(100 * hazard_fraction, 1)
 
     if hazard_fraction is not None:
         flood_score = round(100 * hazard_fraction, 1)
@@ -523,6 +560,11 @@ async def analyze(
             else "ok"
         )
         flood_note = fr.message
+        if hazard_is_class_derived:
+            flood_note = (
+                "Based on the live GGIS flood susceptibility for this location. "
+                "Lower hazard values are safer."
+            )
         if flood_is_demo:
             flood_note = "Demo flood data—do not rely on this result for a property decision."
         domains["flood"] = DomainResult(

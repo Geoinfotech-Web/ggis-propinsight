@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     ggis_flood_base_url: str = "http://mock-ggis:9100"
     ggis_flood_api_key: str = "dev-key"
     ggis_flood_hmac_secret: str = "dev-secret"
-    ggis_flood_timeout_ms: int = 800
+    ggis_flood_timeout_ms: int = 5_000
     ggis_flood_data_mode: Literal["mock", "live"] = "mock"
 
     # Auth

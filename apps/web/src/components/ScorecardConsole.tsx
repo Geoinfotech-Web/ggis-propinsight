@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { DOMAIN_ORDER, type DomainResult, type Scorecard } from "../api";
 import { getPersona, type PersonaKey } from "../lib/personas";
 import type { Theme } from "../theme";
 import { RadiusControl } from "./RadiusControl";
+import { IconCube3D, IconEdit } from "./Icons";
 
 const DOMAIN_LABELS: Record<(typeof DOMAIN_ORDER)[number], string> = {
   flood: "Flood hazard",
@@ -59,7 +60,11 @@ const ACCESS_LABELS: Record<string, string> = {
 
 const FLOOD_LABELS: Record<string, string> = {
   risk_class: "Risk class",
-  risk_score: "GGIS hazard score",
+  hazard_index: "PropInsight hazard index",
+  susceptibility_class: "Susceptibility class",
+  zones_inside: "Zones containing this point",
+  zones_nearby: "Nearby flood zones",
+  assessment_radius_km: "Zone search radius",
   elevation_m: "Elevation",
   dist_to_drainage_m: "Distance to drainage",
   flow_accumulation_pct: "Flow accumulation",
@@ -126,11 +131,12 @@ function scoreBarColor(score: number | null, status: DomainResult["status"]): st
 }
 
 function floodHazardColor(result: DomainResult): string {
-  if (result.score === null || result.status === "pending") return "#94a3b8";
+  if (result.status === "pending") return "#94a3b8";
   const rating = (result.rating ?? String(result.evidence?.risk_class ?? "")).toLowerCase();
   if (rating.includes("very high") || rating.includes("high")) return "#dc2626";
   if (rating.includes("moderate")) return "#ca8a04";
   if (rating.includes("low")) return "#0d9488";
+  if (result.score === null) return "#94a3b8";
   if (result.score >= 60) return "#dc2626";
   if (result.score >= 40) return "#ca8a04";
   return "#0d9488";
@@ -233,6 +239,30 @@ function formatMetres(m: number): string {
 function formatEvidenceValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (key === "nearby_counts") return formatNearbyCounts(value);
+  if ((key === "zones_inside" || key === "zones_nearby") && Array.isArray(value)) {
+    if (value.length === 0) {
+      return key === "zones_inside"
+        ? "None identified by GGIS"
+        : "None identified within the GGIS search radius";
+    }
+    return value
+      .slice(0, 5)
+      .map((zone) => {
+        if (!zone || typeof zone !== "object") return null;
+        const item = zone as Record<string, unknown>;
+        return [
+          typeof item.name === "string" ? item.name : "Flood zone",
+          typeof item.risk_tier === "string" ? item.risk_tier : null,
+          typeof item.risk_score === "number"
+            ? `${Math.round(item.risk_score * 100)} / 100 zone score`
+            : null,
+          typeof item.distance_km === "number" ? `${item.distance_km.toFixed(1)} km away` : null,
+        ].filter(Boolean).join(" · ");
+      })
+      .filter((item): item is string => Boolean(item))
+      .join("; ");
+  }
+  if (key === "assessment_radius_km" && typeof value === "number") return `${value} km`;
   if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, unknown>;
     if (typeof obj.min === "number" && typeof obj.max === "number" && typeof obj.unit === "string") {
@@ -270,7 +300,6 @@ function formatEvidenceValue(key: string, value: unknown): string {
     return JSON.stringify(value);
   }
   if (typeof value === "number") {
-    if (key === "risk_score") return `${(value * 100).toFixed(0)} / 100`;
     if (key.endsWith("_m") || key.includes("distance") || key.includes("elevation")) {
       return key.includes("elevation") ? `${value.toFixed(0)} m` : formatMetres(value);
     }
@@ -417,7 +446,7 @@ function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<
       : domain === "accessibility"
         ? Object.keys(ACCESS_LABELS)
         : domain === "flood"
-          ? ["risk_class", "risk_score", "elevation_m", "dist_to_drainage_m", "flow_accumulation_pct", "historical_inundation_events", "last_event", "data_currency", "model_version"]
+          ? ["risk_class", "hazard_index", "susceptibility_class", "zones_inside", "zones_nearby", "assessment_radius_km", "elevation_m", "dist_to_drainage_m", "flow_accumulation_pct", "historical_inundation_events", "last_event", "data_currency", "model_version"]
           : domain === "feasibility"
             ? Object.keys(FEASIBILITY_LABELS)
             : domain === "market"
@@ -428,7 +457,7 @@ function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<
   for (const k of Object.keys(evidence)) {
     if (
       !keys.includes(k) &&
-      !["history_events", "nearby", "listings", "listing_kind", "data_mode"].includes(k)
+      !["history_events", "nearby", "listings", "listing_kind", "data_mode", "hazard_index_eligible"].includes(k)
     ) keys.push(k);
   }
 
@@ -744,6 +773,11 @@ export function ScorecardConsole({
   const dark = theme === "dark";
   const personaDef = getPersona(persona);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [analysisEditorOpen, setAnalysisEditorOpen] = useState(false);
+
+  useEffect(() => {
+    setAnalysisEditorOpen(false);
+  }, [card?.location.geohash8]);
 
   const toggle = (id: string) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -846,80 +880,86 @@ export function ScorecardConsole({
 
         {card && (
           <div className="space-y-4">
-            <section
-              className={clsx(
-                "rounded-xl border px-3 py-3",
-                dark ? "border-sky-900/70 bg-sky-950/20" : "border-sky-200 bg-sky-50/60",
-              )}
-              aria-label="Edit analysis settings"
-            >
-              <div className="mb-2 flex items-start justify-between gap-3">
-                <div>
-                  <p className={clsx("text-[10px] font-semibold uppercase tracking-[0.14em]", dark ? "text-sky-400" : "text-sky-700")}>
-                    Edit analysis
-                  </p>
-                  <p className="text-xs font-semibold">
-                    {personaLabel} · {radiusKm} km
-                  </p>
-                </div>
-                {onEditAnalysis && (
-                  <button
-                    type="button"
-                    onClick={onEditAnalysis}
-                    className={clsx(
-                      "rounded-lg border px-2 py-1 text-[10px] font-semibold",
-                      dark
-                        ? "border-gray-700 text-gray-300 hover:bg-gray-800"
-                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
-                    )}
-                  >
-                    Change audience
-                  </button>
-                )}
-              </div>
-              {onRadiusChange && (
-                <RadiusControl
-                  theme={theme}
-                  value={radiusKm}
-                  onChange={onRadiusChange}
-                  idPrefix={radiusControlIdPrefix}
-                  compact
-                />
-              )}
-              {updatingMessage && (
-                <p
-                  className={clsx(
-                    "mt-2 flex items-center gap-2 text-[11px] font-medium",
-                    dark ? "text-sky-300" : "text-sky-700",
-                  )}
-                  role="status"
-                >
-                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600" />
-                  {updatingMessage}
-                </p>
-              )}
-            </section>
-            {showPlanningContext && onOpenProfessional3D && (
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={onOpenProfessional3D}
+                onClick={() => setAnalysisEditorOpen((open) => !open)}
                 className={clsx(
-                  "flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left shadow-sm transition",
+                  "inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold shadow-sm transition",
                   dark
-                    ? "border-sky-800/80 bg-gradient-to-r from-sky-950/80 to-cyan-950/50 text-sky-100 hover:border-sky-600"
-                    : "border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-950 hover:border-sky-400",
+                    ? "border-gray-700 bg-gray-950/50 text-gray-100 hover:border-sky-700"
+                    : "border-slate-200 bg-white text-slate-800 hover:border-sky-300",
                 )}
+                aria-expanded={analysisEditorOpen}
+                aria-controls={`${radiusControlIdPrefix}-analysis-editor`}
               >
-                <span>
-                  <span className="block text-xs font-semibold">Professional 3D site view</span>
-                  <span className={clsx("mt-0.5 block text-[10px] leading-4", dark ? "text-sky-300/80" : "text-sky-700") }>
-                    Explore terrain, planning, land cover and nearby evidence.
-                  </span>
-                </span>
-                <span className="rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
-                  Open
-                </span>
+                <IconEdit size={14} className={dark ? "text-sky-300" : "text-sky-700"} />
+                Edit analysis
               </button>
+              {showPlanningContext && onOpenProfessional3D && (
+                <button
+                  type="button"
+                  onClick={onOpenProfessional3D}
+                  className={clsx(
+                    "inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold shadow-sm transition",
+                    dark
+                      ? "border-sky-800 bg-sky-950/50 text-sky-200 hover:border-sky-600"
+                      : "border-sky-200 bg-sky-50 text-sky-900 hover:border-sky-400",
+                  )}
+                >
+                  <IconCube3D size={15} />
+                  3D site view
+                </button>
+              )}
+            </div>
+            {analysisEditorOpen && (
+              <section
+                id={`${radiusControlIdPrefix}-analysis-editor`}
+                className={clsx(
+                  "rounded-xl border px-3 py-3",
+                  dark ? "border-sky-900/70 bg-sky-950/20" : "border-sky-200 bg-sky-50/60",
+                )}
+                aria-label="Edit analysis settings"
+              >
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold">{personaLabel} · {radiusKm} km</p>
+                  {onEditAnalysis && (
+                    <button
+                      type="button"
+                      onClick={onEditAnalysis}
+                      className={clsx(
+                        "rounded-lg border px-2 py-1 text-[10px] font-semibold",
+                        dark
+                          ? "border-gray-700 text-gray-300 hover:bg-gray-800"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                      )}
+                    >
+                      Change audience
+                    </button>
+                  )}
+                </div>
+                {onRadiusChange && (
+                  <RadiusControl
+                    theme={theme}
+                    value={radiusKm}
+                    onChange={onRadiusChange}
+                    idPrefix={radiusControlIdPrefix}
+                    compact
+                  />
+                )}
+                {updatingMessage && (
+                  <p
+                    className={clsx(
+                      "mt-2 flex items-center gap-2 text-[11px] font-medium",
+                      dark ? "text-sky-300" : "text-sky-700",
+                    )}
+                    role="status"
+                  >
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600" />
+                    {updatingMessage}
+                  </p>
+                )}
+              </section>
             )}
             <div
               className={clsx(
@@ -1234,7 +1274,7 @@ export function ScorecardConsole({
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="font-display text-2xl font-semibold tabular-nums leading-none">
-                          {r.score !== null ? r.score.toFixed(0) : "—"}
+                          {r.score !== null ? r.score.toFixed(0) : isFlood ? "N/P" : "—"}
                         </p>
                         {isFlood && (
                           <p
@@ -1243,7 +1283,7 @@ export function ScorecardConsole({
                               dark ? "text-gray-400" : "text-slate-500",
                             )}
                           >
-                            Hazard / 100
+                            {r.score !== null ? "Hazard index / 100" : "Not published"}
                           </p>
                         )}
                         <p className={clsx("mt-1 text-[10px] uppercase tracking-wide", dark ? "text-gray-500" : "text-slate-400")}>

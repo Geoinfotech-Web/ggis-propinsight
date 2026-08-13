@@ -213,7 +213,7 @@ export function ReportGuideDialog({ open, theme, card, persona, placeLabel, onCl
                   </div>
                   <div className={clsx("rounded-xl border p-3 text-sm leading-5", dark ? "border-red-900/70 bg-red-950/30 text-gray-200" : "border-red-200 bg-red-50 text-slate-700")}>
                     <p className="font-semibold">Flood is different</p>
-                    <p className="mt-1">Its number is hazard, so lower is safer. The fit score internally uses the inverse suitability.</p>
+                    <p className="mt-1">Flood uses a hazard index where lower is safer. Higher flood hazard reduces the overall fit score.</p>
                   </div>
                 </div>
               </section>
