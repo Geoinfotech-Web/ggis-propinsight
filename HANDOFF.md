@@ -23,14 +23,15 @@ Project Overview (v1.2), Technical Design Document (v1.1), and Implementation Pl
 | React + MapLibre guided analysis + PDF export | ✅ runs locally |
 | CI (api + etl + web) | ✅ done |
 | Multi-source POIs (Overpass + Overture + GRID3) | ✅ adapters configured; transactional publish + QA gates added |
-| Amenity / accessibility / feasibility domains | ✅ active; verify remaining demo-labelled road provenance before production |
+| Amenity / accessibility / feasibility domains | ✅ OSM roads + multi-source POIs published for pilot |
 | FCT land context | ✅ GRID3-clipped Overture uses + full-FCT ESA WorldCover 10 m observed cover published |
 | Official AGIS/FCTA planning import | ✅ importer ready; ⚠️ licensed vector dataset and web-reuse permission still required |
 
 Flood, amenities, market, Habitability, terrain feasibility, land context, and
-professional development context are active locally. Some roads, security, and
-planning registry versions remain demo-labelled and must be replaced before a
-production launch.
+professional development context are active locally. **Pilot publish complete:**
+multi-source POIs (6k+), OSM roads (84k segments), security/planning republished
+off `demo-seed`. See `docs/pilot-layer-inventory.md` and `docs/deploy-brief.md`
+for subdomain handover.
 
 ---
 

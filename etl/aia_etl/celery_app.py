@@ -34,6 +34,7 @@ app = Celery(
         "aia_etl.tasks.environment",
         "aia_etl.tasks.projects",
         "aia_etl.tasks.buildings",
+        "aia_etl.tasks.pilot_context",
     ],
 )
 

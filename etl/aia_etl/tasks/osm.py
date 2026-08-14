@@ -35,8 +35,8 @@ _STAGING_POINT = "planet_osm_point"
 _STAGING_POLYGON = "planet_osm_polygon"
 _STAGING_LINE = "planet_osm_line"
 
-# OSM tag columns osm2pgsql exposes as hstore/columns that we inspect for POIs.
-_POI_TAG_KEYS = ("amenity", "shop", "man_made", "power", "healthcare", "tower:type")
+# OSM tag columns osm2pgsql exposes that we inspect for POIs (default pgsql schema).
+_POI_TAG_KEYS = ("amenity", "shop", "man_made", "power", "tower:type")
 
 
 def _run(cmd: list[str]) -> None:
@@ -57,6 +57,8 @@ def clip_extract(pbf_in: Path, pbf_out: Path, bbox: tuple[float, float, float, f
 
 def load_osm2pgsql(pbf: Path) -> None:
     """Load the clipped extract into PostGIS staging tables via osm2pgsql."""
+    with connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS hstore"))
     _run([
         "osm2pgsql", "--create", "--slim", "--drop", "--hstore",
         "-d", settings.sync_sqlalchemy_url.replace("postgresql+psycopg", "postgresql"),
@@ -82,7 +84,7 @@ def _staging_pois() -> list[dict[str, Any]]:
                     FROM {table}
                     WHERE amenity IS NOT NULL OR shop IS NOT NULL
                        OR man_made IS NOT NULL OR power IS NOT NULL
-                       OR healthcare IS NOT NULL
+                       OR "tower:type" IS NOT NULL
                     """
                 )
             ).mappings()

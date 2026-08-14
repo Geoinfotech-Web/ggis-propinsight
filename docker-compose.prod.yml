@@ -1,0 +1,33 @@
+# PropInsight — production-oriented compose overlay (GCP staging).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d db redis api web-prod
+# Omit mock-ggis when GGIS_FLOOD_DATA_MODE=live.
+
+services:
+  api:
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    environment:
+      AIA_ENV: ${AIA_ENV:-staging}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://propinsight-staging.ggis.africa}
+      GGIS_FLOOD_DATA_MODE: ${GGIS_FLOOD_DATA_MODE:-live}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web-prod:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.prod
+      args:
+        VITE_CESIUM_ION_TOKEN: ${VITE_CESIUM_ION_TOKEN:-}
+        VITE_3D_TERRAIN_ENABLED: ${VITE_3D_TERRAIN_ENABLED:-false}
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+  mock-ggis:
+    profiles: ["local-flood-mock"]

@@ -127,6 +127,8 @@ docker compose up --build etl-worker etl-beat
 
 # Trigger a pipeline manually (inside the worker container or a shell with deps):
 celery -A aia_etl.celery_app call aia_etl.tasks.osm.refresh_osm
+celery -A aia_etl.celery_app call aia_etl.tasks.pilot_context.republish_security
+celery -A aia_etl.celery_app call aia_etl.tasks.pilot_context.republish_planning
 celery -A aia_etl.celery_app call aia_etl.tasks.flood_tiles.mirror_hazard_tiles
 celery -A aia_etl.celery_app call aia_etl.tasks.land_use.refresh_land_use
 celery -A aia_etl.celery_app call aia_etl.tasks.boundaries.refresh_fct_boundary
