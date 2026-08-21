@@ -29,23 +29,35 @@ type Props = {
   theme: Theme;
   items: NearbyPoiItem[];
   open: boolean;
+  category?: string | null;
+  elevated?: boolean;
   radiusKm?: number;
   totalCount?: number;
   onClose: () => void;
   onSelect?: (item: NearbyPoiItem) => void;
 };
 
-/** Full nearby amenities list within the scorecard's selected search radius. */
-export function NearbyAmenitiesList({ theme, items, open, radiusKm = 5, totalCount, onClose, onSelect }: Props) {
+/** Full amenities list within the scorecard's selected search radius. */
+export function NearbyAmenitiesList({ theme, items, open, category, elevated = false, radiusKm = 5, totalCount, onClose, onSelect }: Props) {
   if (!open) return null;
   const dark = theme === "dark";
+  const visibleItems = category ? items.filter((item) => item.category === category) : items;
   const groups = CATEGORY_ORDER.map((cat) => ({
     cat,
-    items: items.filter((p) => p.category === cat).sort((a, b) => a.distance_m - b.distance_m),
+    items: visibleItems.filter((p) => p.category === cat).sort((a, b) => a.distance_m - b.distance_m),
   })).filter((g) => g.items.length > 0);
+  const title = category ? (CATEGORY_LABELS[category] ?? category) : "Amenities";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal aria-labelledby="nearby-amenities-title">
+    <div
+      className={clsx(
+        "fixed inset-0 flex items-end justify-center sm:items-center sm:p-4",
+        elevated ? "z-[90]" : "z-50",
+      )}
+      role="dialog"
+      aria-modal
+      aria-labelledby="nearby-amenities-title"
+    >
       <button
         type="button"
         className="absolute inset-0 bg-black/40"
@@ -69,12 +81,13 @@ export function NearbyAmenitiesList({ theme, items, open, radiusKm = 5, totalCou
               Within {radiusKm} km
             </p>
             <h2 id="nearby-amenities-title" className="font-display text-lg font-semibold tracking-tight">
-              Nearby amenities
+              {title}
             </h2>
             <p className={clsx("text-[11px]", dark ? "text-gray-400" : "text-slate-500")}>
-              {totalCount && totalCount > items.length
-                ? `Showing ${items.length} nearest of ${totalCount} places`
-                : `${items.length} place${items.length === 1 ? "" : "s"}`} · schools, hospitals, markets, banks
+              {totalCount && totalCount > visibleItems.length
+                ? `Showing ${visibleItems.length} closest of ${totalCount} places`
+                : `${visibleItems.length} place${visibleItems.length === 1 ? "" : "s"}`}
+              {!category && " · schools, hospitals, markets, banks"}
             </p>
           </div>
           <button

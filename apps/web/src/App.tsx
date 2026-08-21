@@ -247,6 +247,7 @@ export default function App() {
   const [desktopReportOpen, setDesktopReportOpen] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(true);
   const [amenitiesListOpen, setAmenitiesListOpen] = useState(false);
+  const [amenitiesListCategory, setAmenitiesListCategory] = useState<string | null>(null);
   const [reportGuideOpen, setReportGuideOpen] = useState(false);
   const [professional3DOpen, setProfessional3DOpen] = useState(false);
   const [searchResetKey, setSearchResetKey] = useState(0);
@@ -948,13 +949,20 @@ export default function App() {
   };
   const dark = theme === "dark";
   const displayRadiusKm = candidate ? setupRadiusKm : analysisRadiusKm;
-  const nearbyAmenities = nearbyFromScorecard(card?.domains.amenities?.evidence);
-  const nearbyAmenityTotal = nearbyTotalFromScorecard(card) || nearbyAmenities.length;
+  const amenitiesSourceCard = candidate && pendingCard ? pendingCard : card;
+  const nearbyAmenities = nearbyFromScorecard(amenitiesSourceCard?.domains.amenities?.evidence);
+  const nearbyAmenityTotal =
+    nearbyTotalFromScorecard(amenitiesSourceCard) || nearbyAmenities.length;
+  const amenityCounts = nearbyCountsFromScorecard(amenitiesSourceCard);
   const legendCountsAreCurrent =
     !candidate && card?.analysis_radius_m === analysisRadiusKm * 1_000;
   const legendAmenityCounts = legendCountsAreCurrent
-    ? nearbyCountsFromScorecard(card)
+    ? amenityCounts
     : undefined;
+  const amenitiesListTotal = amenitiesListCategory
+    ? amenityCounts?.[amenitiesListCategory] ??
+      nearbyAmenities.filter((item) => item.category === amenitiesListCategory).length
+    : nearbyAmenityTotal;
   const securityCountValue = card?.domains.security?.evidence.nearby_count;
   const legendSecurityCount =
     legendCountsAreCurrent && typeof securityCountValue === "number"
@@ -972,6 +980,16 @@ export default function App() {
     ? layers
     : layers.filter((layer) => layer.id !== "government_projects");
 
+  const openAmenitiesList = (category?: string) => {
+    setAmenitiesListCategory(category ?? null);
+    setAmenitiesListOpen(true);
+  };
+
+  const closeAmenitiesList = () => {
+    setAmenitiesListOpen(false);
+    setAmenitiesListCategory(null);
+  };
+
   const focusNearby = (item: NearbyPoiItem) => {
     if (item.lon == null || item.lat == null) return;
     mapRef.current?.flyTo({
@@ -979,7 +997,7 @@ export default function App() {
       zoom: Math.max(mapRef.current.getZoom(), 15),
       duration: 900,
     });
-    setAmenitiesListOpen(false);
+    closeAmenitiesList();
   };
 
   const resetLocationAnalysis = () => {
@@ -1011,6 +1029,7 @@ export default function App() {
     setUpdatingMessage(null);
     setError(null);
     setAmenitiesListOpen(false);
+    setAmenitiesListCategory(null);
     setReportGuideOpen(false);
     setProfessional3DOpen(false);
     setSearchResetKey((key) => key + 1);
@@ -1069,7 +1088,7 @@ export default function App() {
               persona={persona}
               onClose={() => setDesktopReportOpen(false)}
               onReset={resetLocationAnalysis}
-              onViewNearbyList={() => setAmenitiesListOpen(true)}
+              onViewNearbyList={openAmenitiesList}
               radiusKm={analysisRadiusKm}
               radiusControlIdPrefix="desktop-scorecard"
               updatingMessage={updatingMessage}
@@ -1110,7 +1129,7 @@ export default function App() {
               <div className="pointer-events-auto">
                 <button
                   type="button"
-                  onClick={() => setAmenitiesListOpen(true)}
+                  onClick={() => openAmenitiesList()}
                   className={clsx(
                     "inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-semibold shadow-lg",
                     dark
@@ -1225,7 +1244,7 @@ export default function App() {
               persona={persona}
               onClose={() => setSheetOpen(false)}
               onReset={resetLocationAnalysis}
-              onViewNearbyList={() => setAmenitiesListOpen(true)}
+              onViewNearbyList={openAmenitiesList}
               radiusKm={analysisRadiusKm}
               radiusControlIdPrefix="mobile-scorecard"
               updatingMessage={updatingMessage}
@@ -1245,9 +1264,11 @@ export default function App() {
         theme={theme}
         items={nearbyAmenities}
         open={amenitiesListOpen}
-        radiusKm={analysisRadiusKm}
-        totalCount={nearbyAmenityTotal}
-        onClose={() => setAmenitiesListOpen(false)}
+        category={amenitiesListCategory}
+        elevated={Boolean(candidate && pendingCard)}
+        radiusKm={candidate && pendingCard ? setupRadiusKm : analysisRadiusKm}
+        totalCount={amenitiesListTotal}
+        onClose={closeAmenitiesList}
         onSelect={focusNearby}
       />
 
@@ -1268,6 +1289,7 @@ export default function App() {
         onRetry={() => void analyseCandidate()}
         onGenerateReport={() => void generatePendingReport()}
         onViewMap={viewCandidateOnMap}
+        onViewNearbyList={openAmenitiesList}
       />
 
       {card && (

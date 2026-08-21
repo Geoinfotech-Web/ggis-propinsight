@@ -4,6 +4,7 @@ import type { Scorecard } from "../api";
 import { getPersona, PERSONAS, type PersonaKey } from "../lib/personas";
 import type { Theme } from "../theme";
 import { RadiusControl } from "./RadiusControl";
+import { ScorecardConsole } from "./ScorecardConsole";
 
 export type AnalysisCandidate = {
   lon: number;
@@ -31,14 +32,8 @@ type Props = {
   onRetry: () => void;
   onGenerateReport: () => void;
   onViewMap: () => void;
+  onViewNearbyList: (category?: string) => void;
 };
-
-function fitLabel(card: Scorecard, personaLabel: string): string {
-  if (card.fit_score == null) return `Evidence is limited for this ${personaLabel} report`;
-  if (card.fit_score >= 70) return `Strong match for ${personaLabel}`;
-  if (card.fit_score >= 40) return `Mixed match for ${personaLabel}`;
-  return `Weak match for ${personaLabel}`;
-}
 
 export function AnalysisSetupDialog({
   theme,
@@ -57,6 +52,7 @@ export function AnalysisSetupDialog({
   onRetry,
   onGenerateReport,
   onViewMap,
+  onViewNearbyList,
 }: Props) {
   const dark = theme === "dark";
   const [step, setStep] = useState<1 | 2>(1);
@@ -152,7 +148,10 @@ export function AnalysisSetupDialog({
       <div
         ref={panelRef}
         className={clsx(
-          "relative z-10 w-full max-w-lg overflow-hidden rounded-t-3xl border shadow-2xl sm:rounded-3xl",
+          "relative z-10 flex w-full flex-col overflow-hidden rounded-t-3xl border shadow-2xl sm:rounded-3xl",
+          phase === "ready"
+            ? "h-[calc(100dvh-1rem)] max-w-4xl sm:h-[min(92dvh,56rem)]"
+            : "max-w-lg",
           dark
             ? "border-gray-700 bg-gray-900 text-gray-100"
             : "border-slate-200 bg-white text-slate-900",
@@ -160,7 +159,7 @@ export function AnalysisSetupDialog({
       >
         <div
           className={clsx(
-            "border-b px-5 py-4",
+            "shrink-0 border-b px-5 py-4",
             dark ? "border-gray-800" : "border-slate-200",
           )}
         >
@@ -224,7 +223,12 @@ export function AnalysisSetupDialog({
           </p>
         </div>
 
-        <div className="space-y-4 px-5 py-5">
+        <div
+          className={clsx(
+            "space-y-4 px-5 py-5",
+            phase === "ready" && "min-h-0 flex-1 overflow-hidden",
+          )}
+        >
           {phase === "setup" && step === 1 && (
             <>
               <div>
@@ -309,49 +313,11 @@ export function AnalysisSetupDialog({
           )}
 
           {phase === "ready" && pendingCard && (
-            <div data-phase-autofocus tabIndex={-1} className="space-y-3 outline-none">
-              <div
-                className={clsx(
-                  "rounded-2xl border p-4",
-                  dark
-                    ? "border-teal-900 bg-teal-950/30"
-                    : "border-teal-200 bg-teal-50",
-                )}
-              >
-                <div className="flex items-end gap-3">
-                  <span className="font-display text-4xl font-semibold leading-none tabular-nums">
-                    {pendingCard.fit_score != null ? pendingCard.fit_score.toFixed(0) : "-"}
-                  </span>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70">
-                      Fit score
-                    </p>
-                    <p className="text-sm font-semibold">
-                      {fitLabel(pendingCard, currentPersona.label)}
-                    </p>
-                  </div>
-                </div>
-                {pendingCard.summary && (
-                  <p className="mt-3 text-xs leading-5 opacity-85">{pendingCard.summary}</p>
-                )}
-              </div>
-              <div
-                className={clsx(
-                  "grid grid-cols-2 gap-2 rounded-xl border px-3 py-3 text-xs",
-                  dark
-                    ? "border-gray-800 bg-gray-950/50 text-gray-300"
-                    : "border-slate-200 bg-slate-50 text-slate-600",
-                )}
-              >
-                <div>
-                  <p className="font-semibold text-inherit">Audience</p>
-                  <p>{currentPersona.label}</p>
-                </div>
-                <div>
-                  <p className="font-semibold text-inherit">Analysis area</p>
-                  <p>{radiusKm} km radius</p>
-                </div>
-              </div>
+            <div
+              data-phase-autofocus
+              tabIndex={-1}
+              className="flex h-full min-h-0 flex-col gap-3 outline-none"
+            >
               {pdfStatus === "downloaded" && (
                 <p className="rounded-lg bg-teal-100 px-3 py-2 text-xs font-semibold text-teal-800 dark:bg-teal-950 dark:text-teal-300">
                   PDF downloaded. You can download it again or view the full result on the map.
@@ -362,6 +328,20 @@ export function AnalysisSetupDialog({
                   PDF could not be generated: {pdfError}
                 </p>
               )}
+              <div className="min-h-0 flex-1">
+                <ScorecardConsole
+                  theme={theme}
+                  card={pendingCard}
+                  loading={false}
+                  error={null}
+                  placeLabel={place}
+                  persona={persona}
+                  radiusKm={radiusKm}
+                  radiusControlIdPrefix="pending-scorecard"
+                  onViewNearbyList={onViewNearbyList}
+                  preview
+                />
+              </div>
             </div>
           )}
 
@@ -379,7 +359,7 @@ export function AnalysisSetupDialog({
 
         <div
           className={clsx(
-            "flex items-center justify-between gap-3 border-t px-5 py-4",
+            "flex shrink-0 items-center justify-between gap-3 border-t px-5 py-4",
             dark ? "border-gray-800" : "border-slate-200",
           )}
         >

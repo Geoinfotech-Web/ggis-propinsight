@@ -39,17 +39,6 @@ const AMENITY_LABELS: Record<string, string> = {
   fuel: "Fuel station",
 };
 
-const AMENITY_COUNT_LABELS: Record<string, string> = {
-  school: "schools",
-  hospital: "hospitals / clinics",
-  water: "water points",
-  power: "power facilities",
-  isp: "internet providers",
-  market: "markets",
-  bank: "banks",
-  fuel: "fuel stations",
-};
-
 const ACCESS_LABELS: Record<string, string> = {
   road_distance: "Nearest road",
   cbd_time: "CBD (est.)",
@@ -114,14 +103,6 @@ const MARKET_LABELS: Record<string, string> = {
   as_of: "Latest observation",
   method: "Method",
 };
-
-function formatNearbyCounts(value: unknown): string {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return "—";
-  return Object.entries(value as Record<string, unknown>)
-    .filter(([, count]) => typeof count === "number")
-    .map(([category, count]) => `${count} ${AMENITY_COUNT_LABELS[category] ?? category}`)
-    .join(" · ");
-}
 
 function scoreBarColor(score: number | null, status: DomainResult["status"]): string {
   if (status === "pending" || score === null) return "#94a3b8";
@@ -238,7 +219,6 @@ function formatMetres(m: number): string {
 
 function formatEvidenceValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
-  if (key === "nearby_counts") return formatNearbyCounts(value);
   if ((key === "zones_inside" || key === "zones_nearby") && Array.isArray(value)) {
     if (value.length === 0) {
       return key === "zones_inside"
@@ -311,7 +291,6 @@ function formatEvidenceValue(key: string, value: unknown): string {
 
 function labelFor(domain: string, key: string): string {
   if (domain === "amenities") {
-    if (key === "nearby_counts") return "Places in radius";
     if (key === "coverage_radius_m") return "Coverage radius";
     return AMENITY_LABELS[key] ?? key.replace(/_/g, " ");
   }
@@ -353,14 +332,6 @@ function tenureRows(
   rows.push({ key: "overlays", label: "Planning overlays", value: text });
   return rows;
 }
-
-type NearbyPoi = {
-  category: string;
-  name: string;
-  distance_m: number;
-  lon: number;
-  lat: number;
-};
 
 type MarketListing = {
   id?: string;
@@ -409,32 +380,6 @@ function parseMarketListings(evidence: Record<string, unknown>): MarketListing[]
     .filter((item): item is MarketListing => item !== null);
 }
 
-const NEARBY_ORDER = ["school", "hospital", "market", "bank"] as const;
-
-function parseNearby(
-  evidence: Record<string, unknown>,
-  amenityOrder: readonly string[] = NEARBY_ORDER,
-): NearbyPoi[] {
-  const raw = evidence.nearby;
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      const o = item as Record<string, unknown>;
-      if (typeof o.category !== "string" || typeof o.distance_m !== "number") return null;
-      if (typeof o.lon !== "number" || typeof o.lat !== "number") return null;
-      const name = typeof o.name === "string" && o.name.trim() ? o.name.trim() : AMENITY_LABELS[o.category] ?? o.category;
-      return { category: o.category, name, distance_m: o.distance_m, lon: o.lon, lat: o.lat };
-    })
-    .filter((x): x is NearbyPoi => x !== null)
-    .sort((a, b) => {
-      const ai = amenityOrder.indexOf(a.category);
-      const bi = amenityOrder.indexOf(b.category);
-      if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-      return a.distance_m - b.distance_m;
-    });
-}
-
 function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<{ key: string; label: string; value: string }> {
   if (domain === "tenure") return tenureRows(evidence);
 
@@ -457,7 +402,7 @@ function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<
   for (const k of Object.keys(evidence)) {
     if (
       !keys.includes(k) &&
-      !["history_events", "nearby", "listings", "listing_kind", "data_mode", "hazard_index_eligible"].includes(k)
+      !["history_events", "nearby", "nearby_counts", "listings", "listing_kind", "data_mode", "hazard_index_eligible"].includes(k)
     ) keys.push(k);
   }
 
@@ -740,16 +685,15 @@ type Props = {
   persona?: PersonaKey;
   onClose?: () => void;
   onReset?: () => void;
-  onViewNearbyList?: () => void;
+  onViewNearbyList?: (category?: string) => void;
   radiusKm?: number;
   radiusControlIdPrefix?: string;
   updatingMessage?: string | null;
   onRadiusChange?: (radiusKm: number) => void;
   onEditAnalysis?: () => void;
   onOpenProfessional3D?: () => void;
+  preview?: boolean;
 };
-
-const PREVIEW_PER_CATEGORY = 2;
 
 function domainLabel(key: string): string {
   return DOMAIN_LABELS[key as (typeof DOMAIN_ORDER)[number]] ?? key.replace(/_/g, " ");
@@ -775,6 +719,7 @@ export function ScorecardConsole({
   onRadiusChange,
   onEditAnalysis,
   onOpenProfessional3D,
+  preview = false,
 }: Props) {
   const dark = theme === "dark";
   const personaDef = getPersona(persona);
@@ -814,7 +759,8 @@ export function ScorecardConsole({
   return (
     <aside
       className={clsx(
-        "flex h-full w-full flex-col border-r",
+        "flex h-full w-full flex-col",
+        preview ? "overflow-hidden rounded-2xl border" : "border-r",
         dark ? "border-gray-800 bg-gray-900/95 text-gray-100" : "border-slate-200 bg-white/95 text-slate-900",
       )}
     >
@@ -886,7 +832,7 @@ export function ScorecardConsole({
 
         {card && (
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
+            {!preview && <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setAnalysisEditorOpen((open) => !open)}
@@ -917,8 +863,8 @@ export function ScorecardConsole({
                   3D site view
                 </button>
               )}
-            </div>
-            {analysisEditorOpen && (
+            </div>}
+            {!preview && analysisEditorOpen && (
               <section
                 id={`${radiusControlIdPrefix}-analysis-editor`}
                 className={clsx(
@@ -1317,161 +1263,58 @@ export function ScorecardConsole({
                         ) : (
                           <table className="w-full border-collapse text-left">
                             <tbody>
-                              {rows.map((row) => (
-                                <tr
-                                  key={row.key}
-                                  className={clsx(
-                                    "border-b last:border-0",
-                                    dark ? "border-gray-800/80" : "border-slate-100",
-                                  )}
-                                >
-                                  <th
-                                    scope="row"
+                              {rows.map((row) => {
+                                const rawCount =
+                                  d === "amenities" &&
+                                  r.evidence.nearby_counts &&
+                                  typeof r.evidence.nearby_counts === "object" &&
+                                  !Array.isArray(r.evidence.nearby_counts)
+                                    ? (r.evidence.nearby_counts as Record<string, unknown>)[row.key]
+                                    : undefined;
+                                const amenityCount =
+                                  row.key in AMENITY_LABELS && typeof rawCount === "number"
+                                    ? rawCount
+                                    : 0;
+                                return (
+                                  <tr
+                                    key={row.key}
                                     className={clsx(
-                                      "py-1.5 pr-3 text-[10px] font-semibold uppercase tracking-widest",
-                                      dark ? "text-gray-500" : "text-slate-400",
+                                      "border-b last:border-0",
+                                      dark ? "border-gray-800/80" : "border-slate-100",
                                     )}
                                   >
-                                    {row.label}
-                                  </th>
-                                  <td className="py-1.5 text-right text-[11px] tabular-nums font-medium">
-                                    {row.value}
-                                  </td>
-                                </tr>
-                              ))}
+                                    <th
+                                      scope="row"
+                                      className={clsx(
+                                        "py-1.5 pr-3 text-[10px] font-semibold uppercase tracking-widest",
+                                        dark ? "text-gray-500" : "text-slate-400",
+                                      )}
+                                    >
+                                      {row.label}
+                                    </th>
+                                    <td className="py-1.5 text-right text-[11px] tabular-nums font-medium">
+                                      <span className="block">{row.value}</span>
+                                      {amenityCount > 0 && onViewNearbyList && (
+                                        <button
+                                          type="button"
+                                          onClick={() => onViewNearbyList(row.key)}
+                                          className={clsx(
+                                            "mt-1 text-[10px] font-semibold",
+                                            dark
+                                              ? "text-sky-400 hover:text-sky-300"
+                                              : "text-sky-700 hover:text-sky-800",
+                                          )}
+                                        >
+                                          View list · {amenityCount}
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         )}
-
-                        {d === "amenities" && (() => {
-                          const nearby = parseNearby(r.evidence ?? {}, personaDef.amenityOrder);
-                          const countEvidence =
-                            r.evidence.nearby_counts &&
-                            typeof r.evidence.nearby_counts === "object" &&
-                            !Array.isArray(r.evidence.nearby_counts)
-                              ? (r.evidence.nearby_counts as Record<string, unknown>)
-                              : {};
-                          const countFor = (category: string, fallback: number) => {
-                            const count = countEvidence[category];
-                            return typeof count === "number" ? count : fallback;
-                          };
-                          const totalNearby =
-                            Object.values(countEvidence).reduce<number>(
-                              (total, count) =>
-                                total + (typeof count === "number" ? count : 0),
-                              0,
-                            ) || nearby.length;
-                          const groups = personaDef.amenityOrder
-                            .map((cat) => ({
-                              cat,
-                              items: nearby.filter((p) => p.category === cat),
-                            }))
-                            .filter((g) => g.items.length > 0);
-                          const hasMore =
-                            groups.some(
-                              (g) => countFor(g.cat, g.items.length) > PREVIEW_PER_CATEGORY,
-                            ) || totalNearby > PREVIEW_PER_CATEGORY * 2;
-                          return (
-                            <div className={clsx("mt-3 border-t pt-2.5", dark ? "border-gray-800" : "border-slate-100")}>
-                              <div className="mb-1.5 flex items-center justify-between gap-2">
-                                <p
-                                  className={clsx(
-                                    "text-[10px] font-semibold uppercase tracking-widest",
-                                    dark ? "text-gray-500" : "text-slate-400",
-                                  )}
-                                >
-                                  Nearby ({radiusKm} km)
-                                </p>
-                                {nearby.length > 0 && onViewNearbyList && (
-                                  <button
-                                    type="button"
-                                    onClick={onViewNearbyList}
-                                    className={clsx(
-                                      "rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                                      dark
-                                        ? "border-sky-700/60 bg-sky-950/40 text-sky-300 hover:bg-sky-900/50"
-                                        : "border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100",
-                                    )}
-                                  >
-                                    View list · {totalNearby}
-                                  </button>
-                                )}
-                              </div>
-                              {groups.length === 0 ? (
-                                <p className={clsx("text-[11px]", dark ? "text-gray-500" : "text-slate-400")}>
-                                  No named schools, hospitals, markets, or banks within {radiusKm} km.
-                                </p>
-                              ) : (
-                                <div className="space-y-2.5">
-                                  {groups.map(({ cat, items }) => {
-                                    const preview = items.slice(0, PREVIEW_PER_CATEGORY);
-                                    const categoryCount = countFor(cat, items.length);
-                                    const extra = categoryCount - preview.length;
-                                    return (
-                                      <div key={cat}>
-                                        <p
-                                          className={clsx(
-                                            "mb-1 text-[10px] font-semibold",
-                                            dark ? "text-sky-400" : "text-sky-700",
-                                          )}
-                                        >
-                                          {AMENITY_LABELS[cat] ?? cat}
-                                          {categoryCount > 1 ? ` · ${categoryCount}` : ""}
-                                        </p>
-                                        <ul className="space-y-1">
-                                          {preview.map((p) => (
-                                            <li
-                                              key={`${p.category}-${p.name}-${p.distance_m}`}
-                                              className="flex items-baseline justify-between gap-2 text-[11px]"
-                                            >
-                                              <span className={clsx("min-w-0 truncate", dark ? "text-gray-200" : "text-slate-800")}>
-                                                {p.name}
-                                              </span>
-                                              <span
-                                                className={clsx(
-                                                  "shrink-0 tabular-nums",
-                                                  dark ? "text-gray-500" : "text-slate-400",
-                                                )}
-                                              >
-                                                {formatMetres(p.distance_m)}
-                                              </span>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                        {extra > 0 && onViewNearbyList && (
-                                          <button
-                                            type="button"
-                                            onClick={onViewNearbyList}
-                                            className={clsx(
-                                              "mt-1 text-[10px] font-semibold",
-                                              dark ? "text-sky-400 hover:text-sky-300" : "text-sky-700 hover:text-sky-800",
-                                            )}
-                                          >
-                                            +{extra} more — view list
-                                          </button>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                  {hasMore && onViewNearbyList && (
-                                    <button
-                                      type="button"
-                                      onClick={onViewNearbyList}
-                                      className={clsx(
-                                        "w-full rounded-lg border px-3 py-2 text-xs font-semibold",
-                                        dark
-                                          ? "border-gray-700 bg-gray-950/60 text-sky-300 hover:bg-gray-900"
-                                          : "border-slate-200 bg-slate-50 text-sky-800 hover:bg-sky-50",
-                                      )}
-                                    >
-                                      View all schools, hospitals, markets & banks
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
 
                         {d === "market" && showMarketListings && (() => {
                           const evidence = r.evidence ?? {};
