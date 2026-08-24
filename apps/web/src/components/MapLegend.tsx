@@ -119,7 +119,7 @@ export function MapLegend({
   return (
     <div
       className={clsx(
-        "glass-surface w-[min(23rem,calc(100vw-6rem))] overflow-hidden rounded-3xl border",
+        "glass-surface w-[min(18rem,calc(100vw-6rem))] overflow-hidden rounded-2xl border",
         dark ? "border-gray-700/80 bg-gray-900/95" : "border-slate-200 bg-white/95",
       )}
     >

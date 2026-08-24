@@ -142,7 +142,7 @@ export function LayersPanel({ theme, layers, onToggle, radiusKm = 5 }: Props) {
   }, [expanded]);
 
   return (
-    <div ref={rootRef} className="relative z-20">
+    <div ref={rootRef} className="relative z-30 overflow-visible">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -162,7 +162,7 @@ export function LayersPanel({ theme, layers, onToggle, radiusKm = 5 }: Props) {
       {expanded && (
         <div
           className={clsx(
-            "glass-surface toolkit-glass absolute right-full top-0 z-30 mr-2 w-[min(15.5rem,calc(100vw-4.5rem))] overflow-hidden rounded-2xl border",
+            "glass-surface toolkit-glass absolute right-full z-40 mr-2 w-[min(16rem,calc(100vw-5rem))] overflow-hidden rounded-2xl border top-0 lg:bottom-0 lg:top-auto",
             dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white",
           )}
           role="menu"

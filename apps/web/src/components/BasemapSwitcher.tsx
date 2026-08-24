@@ -55,7 +55,7 @@ export function BasemapSwitcher({ theme, activeId, onChange }: Props) {
   }, [expanded]);
 
   return (
-    <div ref={rootRef} className="relative z-20">
+    <div ref={rootRef} className="relative z-30 overflow-visible">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -75,7 +75,7 @@ export function BasemapSwitcher({ theme, activeId, onChange }: Props) {
       {expanded && (
         <div
           className={clsx(
-            "glass-surface toolkit-glass absolute right-full top-0 z-30 mr-2 max-h-[min(50vh,22rem)] w-40 divide-y overflow-y-auto rounded-2xl border",
+            "glass-surface toolkit-glass absolute right-full z-40 mr-2 max-h-[min(50vh,22rem)] w-44 divide-y overflow-y-auto rounded-2xl border top-0 lg:bottom-0 lg:top-auto",
             dark
               ? "divide-gray-800 border-gray-700 bg-gray-900"
               : "divide-slate-200 border-slate-200 bg-white",

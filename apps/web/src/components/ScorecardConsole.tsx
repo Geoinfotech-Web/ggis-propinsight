@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { DOMAIN_ORDER, type DomainResult, type Scorecard } from "../api";
 import { getPersona, type PersonaKey } from "../lib/personas";
 import type { Theme } from "../theme";
-import { IconCopy, IconCube3D, IconMore, IconPin, IconX } from "./Icons";
+import { IconCopy, IconCube3D, IconEdit, IconMore, IconPin, IconX } from "./Icons";
 import { ScoreRing } from "./ScoreRing";
 
 const DOMAIN_LABELS: Record<(typeof DOMAIN_ORDER)[number], string> = {
@@ -505,7 +505,7 @@ function FeasibilityDetails({ result, dark }: { result: DomainResult; dark: bool
       onClick={() => setSection(key)}
       aria-pressed={section === key}
       className={clsx(
-        "min-w-0 rounded-lg border px-2 py-2 text-left transition",
+        "min-w-0 bento-card rounded-xl border px-2 py-2 text-left transition",
         section === key
           ? dark
             ? "border-sky-500 bg-sky-950/70 text-white"
@@ -766,19 +766,19 @@ export function ScorecardConsole({
     >
       <div
         className={clsx(
-          "bento-card m-3 mb-0 flex items-start justify-between gap-3 rounded-2xl border p-5",
+          "bento-card m-2 mb-0 flex items-start justify-between gap-2 rounded-xl border p-3",
           dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white",
         )}
       >
         <div className="min-w-0 flex-1">
           <p className="app-kicker">Location report</p>
-          <h2 className="font-display text-xl font-semibold tracking-tight">Scorecard</h2>
-          <p className={clsx("mt-0.5 text-[11px] leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
+          <h2 className="font-display text-lg font-semibold tracking-tight">Scorecard</h2>
+          <p className={clsx("mt-0.5 line-clamp-2 text-[10px] leading-snug", dark ? "text-gray-400" : "text-slate-500")}>
             {card?.persona?.blurb ?? personaDef.blurb}
           </p>
           {card && (
             <>
-              <div className={clsx("mt-4 border-t pt-3", dark ? "border-gray-800" : "border-slate-200")}>
+              <div className={clsx("mt-2 border-t pt-2", dark ? "border-gray-800" : "border-slate-200")}>
                 <button type="button" onClick={copyLocation} className="inline-flex max-w-full items-center gap-2 text-left" title="Copy coordinates">
                   <IconPin size={14} className="shrink-0 text-amber-600" />
                   <span className="truncate text-sm font-bold tabular-nums text-amber-600">
@@ -792,9 +792,49 @@ export function ScorecardConsole({
                   </p>
                 )}
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {onReset && <button type="button" onClick={onReset} className={clsx("rounded-xl px-3 py-1.5 text-xs font-semibold", dark ? "bg-gray-800 text-gray-200" : "bg-slate-100 text-slate-700")}>Reset</button>}
-                {onEditAnalysis && <button type="button" onClick={onEditAnalysis} className={clsx("rounded-xl px-3 py-1.5 text-xs font-semibold", dark ? "bg-gray-800 text-gray-200" : "bg-slate-100 text-slate-700")}>Edit analysis</button>}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {onReset && (
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    className={clsx(
+                      "inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-semibold",
+                      dark ? "bg-gray-800 text-gray-200" : "bg-slate-100 text-slate-700",
+                    )}
+                  >
+                    Reset
+                  </button>
+                )}
+                {onEditAnalysis && (
+                  <button
+                    type="button"
+                    onClick={onEditAnalysis}
+                    className={clsx(
+                      "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold",
+                      dark
+                        ? "border-gray-700 bg-gray-800 text-gray-100 hover:border-gray-500"
+                        : "border-slate-200 bg-white text-slate-800 hover:border-slate-300",
+                    )}
+                  >
+                    <IconEdit size={13} />
+                    Adjust radius
+                  </button>
+                )}
+                {onOpenProfessional3D && (
+                  <button
+                    type="button"
+                    onClick={onOpenProfessional3D}
+                    className={clsx(
+                      "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold",
+                      dark
+                        ? "border-gray-700 bg-gray-800 text-gray-100 hover:border-gray-500"
+                        : "border-slate-200 bg-white text-slate-800 hover:border-slate-300",
+                    )}
+                  >
+                    <IconCube3D size={13} />
+                    3D site view
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -819,7 +859,7 @@ export function ScorecardConsole({
         </div>
       </div>
 
-      <div className="scorecard-scroll flex-1 overflow-y-auto px-3 py-3">
+      <div className="scorecard-scroll flex-1 overflow-y-auto px-2 py-2">
         {!card && !loading && !error && (
           <p className={clsx("text-sm leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
             Search a place, use your current location, or click the map to generate a Location
@@ -837,19 +877,20 @@ export function ScorecardConsole({
         {error && <p className="text-sm text-status-emergency">Error: {error}</p>}
 
         {card && (
-          <div className="space-y-4">
-            <section className={clsx("bento-card overflow-hidden rounded-2xl border", dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white")}>
+          <div className="space-y-2.5">
+          <div className="grid grid-cols-2 gap-2">
+            <section className={clsx("bento-card col-span-2 overflow-hidden rounded-2xl border", dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white")}>
               <button
                 type="button"
                 onClick={() => toggle("fit_overview")}
                 aria-expanded={expanded.fit_overview ?? false}
-                className="relative flex w-full items-center gap-5 p-5 text-left"
+                className="relative flex w-full items-center gap-3 p-3 text-left"
               >
                 <IconMore size={17} className={clsx("absolute right-4 top-4", dark ? "text-gray-600" : "text-slate-300")} />
-                <ScoreRing score={card.fit_score ?? null} size="lg" color={fit.color} label={`Fit for ${personaLabel}`} />
+                <ScoreRing score={card.fit_score ?? null} size="md" color={fit.color} label={`Fit for ${personaLabel}`} />
                 <div className="min-w-0 flex-1">
                   <p className={clsx("text-[11px] font-semibold uppercase tracking-wide", dark ? "text-gray-400" : "text-slate-500")}>Fit for {personaLabel}</p>
-                  <p className="font-display text-3xl font-bold tabular-nums">{card.fit_score != null ? Math.round(card.fit_score) : "—"} / 100</p>
+                  <p className="font-display text-2xl font-bold tabular-nums">{card.fit_score != null ? Math.round(card.fit_score) : "—"} / 100</p>
                   <span className={clsx(
                     "mt-2 inline-flex rounded-lg px-3 py-1 text-[11px] font-bold uppercase",
                     fit.label === "Strong" ? "bg-emerald-100 text-emerald-700" : fit.label === "Moderate" ? "bg-amber-100 text-amber-700" : fit.label === "Weak" ? "bg-red-100 text-red-700" : "bg-slate-200 text-slate-600",
@@ -864,16 +905,18 @@ export function ScorecardConsole({
             </section>
 
             {card.summary && (
-              <section className={clsx("bento-card overflow-hidden rounded-2xl border", dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white")}>
+              <section className={clsx("bento-card col-span-2 overflow-hidden rounded-2xl border", dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white")}>
                 <button
                   type="button"
                   onClick={() => toggle("summary_overview")}
                   aria-expanded={expanded.summary_overview ?? false}
-                  className="relative w-full p-5 text-left"
+                  className="relative w-full p-3 text-left"
                 >
                   <IconMore size={16} className={clsx("absolute right-4 top-4", dark ? "text-gray-600" : "text-slate-300")} />
                   <p className={clsx("pr-6 text-[11px] font-semibold uppercase tracking-wide", dark ? "text-gray-400" : "text-slate-500")}>What this means for you</p>
-                  <p className="mt-4 text-sm font-semibold leading-relaxed">{card.summary}</p>
+                  <p className={clsx("mt-2 text-sm font-normal leading-snug", dark ? "text-gray-300" : "text-slate-600")}>
+                    {card.summary.replace(/\s*—\s*/g, " - ").replace(/\s*--\s*/g, " - ")}
+                  </p>
                   {(expanded.summary_overview ?? false) && overviewHighlights.length > 0 && (
                     <div className="mt-4 space-y-3">
                       {overviewHighlights.map((highlight) => (
@@ -888,26 +931,9 @@ export function ScorecardConsole({
               </section>
             )}
 
-            {showPlanningContext && onOpenProfessional3D && (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={onOpenProfessional3D}
-                  className={clsx(
-                    "inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold shadow-sm transition",
-                    dark
-                      ? "border-sky-800 bg-sky-950/50 text-sky-200 hover:border-sky-600"
-                      : "border-sky-200 bg-sky-50 text-sky-900 hover:border-sky-400",
-                  )}
-                >
-                  <IconCube3D size={15} />
-                  3D site view
-                </button>
-              </div>
-            )}
             <div
               className={clsx(
-                "hidden rounded-lg border px-3 py-2 text-[11px]",
+                "col-span-2 hidden rounded-lg border px-3 py-2 text-[11px]",
                 dark ? "border-gray-800 bg-gray-950/60 text-gray-400" : "border-slate-200 bg-slate-50 text-slate-500",
               )}
             >
@@ -967,7 +993,9 @@ export function ScorecardConsole({
                       What this means for you
                     </p>
                   )}
-                  <p className="text-[12px] font-medium leading-relaxed">{card.summary}</p>
+                  <p className="text-[12px] font-normal leading-relaxed">
+                    {card.summary.replace(/\s*—\s*/g, " - ").replace(/\s*--\s*/g, " - ")}
+                  </p>
                   {!isConsumerReport && <ProfessionalDecisionSummary card={card} dark={dark} />}
                   {isConsumerReport && overviewHighlights.length > 0 && (
                     <div
@@ -1109,17 +1137,16 @@ export function ScorecardConsole({
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              {!isConsumerReport && (
-                <div className="col-span-2">
-                  <DevelopmentOutlookCard
-                    card={card}
-                    dark={dark}
-                    open={expanded.development_outlook ?? false}
-                    onToggle={() => toggle("development_outlook")}
-                  />
-                </div>
-              )}
+            {!isConsumerReport && (
+              <div className="col-span-2">
+                <DevelopmentOutlookCard
+                  card={card}
+                  dark={dark}
+                  open={expanded.development_outlook ?? false}
+                  onToggle={() => toggle("development_outlook")}
+                />
+              </div>
+            )}
               {orderedDomains.map((d) => {
                 const r = card.domains[d];
                 if (!r) return null;
@@ -1128,15 +1155,15 @@ export function ScorecardConsole({
                 const rows = evidenceRows(d, r.evidence ?? {});
                 const bar = isFlood ? floodHazardColor(r) : scoreBarColor(r.score, r.status);
                 const highPriority = topDomains.has(d);
-                const compactDomain = orderedDomains.indexOf(d) < 2 && !isOpen;
+                const compactDomain = !isOpen;
 
                 return (
                   <section
                     key={d}
                     className={clsx(
-                      "bento-card overflow-hidden rounded-2xl border",
+                      "bento-card overflow-hidden rounded-2xl border bg-white dark:bg-gray-900",
                       compactDomain ? "col-span-1" : "col-span-2",
-                      dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white",
+                      dark ? "border-gray-800" : "border-slate-200",
                     )}
                   >
                     <button
@@ -1158,18 +1185,18 @@ export function ScorecardConsole({
                       />
                       {compactDomain && <ScoreRing score={r.score} size="sm" color={bar} label={domainLabel(d)} />}
                       <div className={clsx("min-w-0 flex-1", compactDomain && "w-full")}>
+                        <h3 className="font-display text-base font-semibold tracking-tight">
+                          {domainLabel(d)}
+                        </h3>
                         <p
                           className={clsx(
-                            "text-[10px] font-semibold uppercase tracking-[0.14em]",
+                            "mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]",
                             dark ? "text-sky-400" : "text-sky-700",
                           )}
                         >
                           {domainKicker(d)}
                         </p>
-                        <div className={clsx("mt-0.5 flex flex-wrap items-center gap-2", compactDomain && "justify-center")}>
-                          <h3 className="font-display text-base font-semibold tracking-tight">
-                            {domainLabel(d)}
-                          </h3>
+                        <div className={clsx("mt-1.5 flex flex-wrap items-center gap-1.5", compactDomain ? "justify-center" : "justify-start")}>
                           {(() => {
                             const badge = isFlood
                               ? floodRiskBadge(r, dark)
@@ -1350,8 +1377,8 @@ export function ScorecardConsole({
                                     <li
                                       key={listing.id ?? `${listing.title}-${index}`}
                                       className={clsx(
-                                        "rounded-lg border p-2.5",
-                                        dark ? "border-gray-800 bg-gray-950/40" : "border-slate-200 bg-slate-50",
+                                        "bento-card rounded-2xl border p-2.5",
+                                        dark ? "border-gray-800 bg-gray-950/40" : "border-slate-200 bg-white",
                                       )}
                                     >
                                       <div className="flex items-start justify-between gap-3">

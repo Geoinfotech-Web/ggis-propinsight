@@ -28,6 +28,7 @@ type Props = {
   onRetry: () => void;
   onGenerateReport: () => void;
   onViewMap: () => void;
+  radiusOnly?: boolean;
 };
 
 const PERSONA_GRID: PersonaKey[] = ["tenant", "investor", "developer", "home_buyer"];
@@ -70,9 +71,10 @@ export function AnalysisSetupDialog({
   onRetry,
   onGenerateReport,
   onViewMap,
+  radiusOnly = false,
 }: Props) {
   const dark = theme === "dark";
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2>(radiusOnly ? 2 : 1);
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
@@ -84,7 +86,7 @@ export function AnalysisSetupDialog({
 
   useEffect(() => {
     if (!candidate) return undefined;
-    setStep(1);
+    setStep(radiusOnly ? 2 : 1);
     restoreFocusRef.current = document.activeElement as HTMLElement | null;
     window.setTimeout(() => panelRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus(), 0);
     const onKeyDown = (event: KeyboardEvent) => {
@@ -113,7 +115,7 @@ export function AnalysisSetupDialog({
       document.removeEventListener("keydown", onKeyDown);
       restoreFocusRef.current?.focus();
     };
-  }, [candidate]);
+  }, [candidate, radiusOnly]);
 
   useEffect(() => {
     if (!candidate) return;
@@ -130,9 +132,9 @@ export function AnalysisSetupDialog({
       ? "Your analysis is ready"
       : phase === "error"
         ? "Analysis could not finish"
-        : step === 1
-          ? "Who is this report for?"
-          : "Set the analysis area";
+        : radiusOnly || step === 2
+          ? "Adjust the analysis radius"
+          : "Who is this report for?";
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={phase === "analysing" || generatingPdf}>
@@ -146,7 +148,7 @@ export function AnalysisSetupDialog({
         dark ? "border-gray-600/70 bg-gray-900/90 text-gray-100" : "border-white/60 bg-slate-700/75 text-white",
       )}>
         <div className={clsx("shrink-0 px-6 pb-3 pt-6 sm:px-8 sm:pt-8", phase === "analysing" && "hidden")}>
-          {phase === "setup" && (
+          {phase === "setup" && !radiusOnly && (
             <>
               <div className="mb-2 flex items-center gap-0" aria-label={`Step ${step} of 2`}>
                 <span className="h-1 flex-1 rounded-l-full bg-[#1492ff]" />
@@ -222,7 +224,11 @@ export function AnalysisSetupDialog({
                 <ScoreRing score={pendingCard.fit_score ?? null} size="lg" color={fitColor(pendingCard.fit_score ?? null)} label={`Fit for ${currentPersona.label}`} />
                 <div className="min-w-0">
                   <p className="font-display text-xl font-bold">{fitLabel(pendingCard, currentPersona.label)}</p>
-                  <p className={clsx("mt-1 text-sm leading-5", dark ? "text-gray-400" : "text-slate-500")}>{pendingCard.summary || "Review the supporting evidence before making a property decision."}</p>
+                  <p className={clsx("mt-1 text-sm leading-5", dark ? "text-gray-400" : "text-slate-500")}>
+                    {(pendingCard.summary || "Review the supporting evidence before making a property decision.")
+                      .replace(/\s*—\s*/g, " - ")
+                      .replace(/\s*--\s*/g, " - ")}
+                  </p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -249,7 +255,7 @@ export function AnalysisSetupDialog({
             <>
               <button type="button" onClick={onCancel} className="rounded-xl px-2 py-2 text-sm font-semibold text-white hover:bg-white/10">Cancel</button>
               <div className="flex items-center gap-3">
-                {step === 2 && <button type="button" onClick={() => setStep(1)} className={clsx("rounded-xl border px-5 py-3 text-sm font-semibold", dark ? "border-gray-700 bg-gray-950/80" : "border-white/80 bg-white/95 text-slate-600")}>Back</button>}
+                {step === 2 && !radiusOnly && <button type="button" onClick={() => setStep(1)} className={clsx("rounded-xl border px-5 py-3 text-sm font-semibold", dark ? "border-gray-700 bg-gray-950/80" : "border-white/80 bg-white/95 text-slate-600")}>Back</button>}
                 {step === 1 ? (
                   <button type="button" onClick={() => setStep(2)} className="rounded-xl bg-[#087df1] px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-sky-600">Continue</button>
                 ) : (

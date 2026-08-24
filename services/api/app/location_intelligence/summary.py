@@ -179,7 +179,7 @@ def build_summary(
     parts = [phrase, strength]
     if worst[0] != best[0] and worst[1] < STRONG:
         parts.append(f"watch {_word(worst[0])}")
-    return " — ".join([parts[0], ", ".join(parts[1:])]) + "."
+    return " - ".join([parts[0], ", ".join(parts[1:])]) + "."
 
 
 def _highlight_tone(score: float) -> str:

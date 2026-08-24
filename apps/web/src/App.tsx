@@ -221,6 +221,7 @@ export default function App() {
   const [setupPersona, setSetupPersona] = useState<PersonaKey>(() => loadPersona());
   const [setupRadiusKm, setSetupRadiusKm] = useState(() => loadAnalysisRadius());
   const [candidate, setCandidate] = useState<AnalysisCandidate | null>(null);
+  const [radiusOnlySetup, setRadiusOnlySetup] = useState(false);
   const [analysisPhase, setAnalysisPhase] = useState<AnalysisFlowPhase>("setup");
   const [pendingCard, setPendingCard] = useState<Scorecard | null>(null);
   const [analysisFlowError, setAnalysisFlowError] = useState<string | null>(null);
@@ -360,7 +361,7 @@ export default function App() {
   };
 
   const beginAnalysisSetup = useCallback(
-    (lon: number, lat: number, label?: string, preserveTitle = false) => {
+    (lon: number, lat: number, label?: string, preserveTitle = false, radiusOnly = false) => {
       reportTitleBeforeSetupRef.current = reportTitle;
       analysisAbortRef.current?.abort();
       analysisRequestRef.current += 1;
@@ -375,6 +376,7 @@ export default function App() {
       setProfessional3DOpen(false);
       setSetupPersona(persona);
       setSetupRadiusKm(analysisRadiusKm);
+      setRadiusOnlySetup(radiusOnly);
       if (!preserveTitle) {
         setReportTitle((label?.trim() || `${lat.toFixed(5)}, ${lon.toFixed(5)}`).slice(0, 80));
       }
@@ -394,6 +396,7 @@ export default function App() {
     pdfAbortRef.current?.abort();
     pdfAbortRef.current = null;
     setCandidate(null);
+    setRadiusOnlySetup(false);
     setAnalysisPhase("setup");
     setPendingCard(null);
     setAnalysisFlowError(null);
@@ -488,6 +491,7 @@ export default function App() {
     setReportGuideOpen(false);
     setProfessional3DOpen(false);
     setCandidate(null);
+    setRadiusOnlySetup(false);
     setPendingCard(null);
     setAnalysisPhase("setup");
     setPdfStatus("idle");
@@ -622,7 +626,7 @@ export default function App() {
 
   const editCurrentAnalysis = () => {
     const last = lastPointRef.current;
-    if (last) beginAnalysisSetup(last.lon, last.lat, last.label, true);
+    if (last) beginAnalysisSetup(last.lon, last.lat, last.label, true, true);
   };
 
   useEffect(() => {
@@ -1156,7 +1160,7 @@ export default function App() {
 
       <div className="relative flex min-h-0 flex-1 flex-row">
         {desktopReportOpen && (
-          <div className="hidden h-full w-[27rem] shrink-0 lg:block xl:w-[28rem]">
+          <div className="hidden h-full w-[20.5rem] shrink-0 lg:block xl:w-[22rem]">
             <ScorecardConsole
               theme={theme}
               card={card}
@@ -1215,7 +1219,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="pointer-events-none absolute right-3 top-3 z-10 flex flex-col gap-1 lg:bottom-10 lg:top-auto lg:gap-2">
+          <div className="pointer-events-none absolute right-3 top-3 z-30 flex flex-col items-end gap-1 overflow-visible lg:bottom-10 lg:top-auto lg:gap-2">
             <div
               className={clsx(
                 "glass-tool liquid-tool-yellow pointer-events-auto overflow-hidden rounded-xl border",
@@ -1406,6 +1410,7 @@ export default function App() {
         onRetry={() => void analyseCandidate()}
         onGenerateReport={() => void generatePendingReport()}
         onViewMap={viewCandidateOnMap}
+        radiusOnly={radiusOnlySetup}
       />
 
       {card && (
