@@ -1160,7 +1160,7 @@ export default function App() {
 
       <div className="relative flex min-h-0 flex-1 flex-row">
         {desktopReportOpen && (
-          <div className="hidden h-full w-[20.5rem] shrink-0 lg:block xl:w-[22rem]">
+          <div className="hidden h-full w-[24.5rem] shrink-0 lg:block xl:w-[26.5rem]">
             <ScorecardConsole
               theme={theme}
               card={card}

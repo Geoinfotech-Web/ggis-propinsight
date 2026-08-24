@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { DOMAIN_ORDER, type DomainResult, type Scorecard } from "../api";
 import { getPersona, type PersonaKey } from "../lib/personas";
@@ -706,6 +707,159 @@ function fitRating(score: number | null | undefined): { label: string; color: st
   return { label: "Weak", color: "#ef4444" };
 }
 
+async function copyText(text: string): Promise<boolean> {
+  const value = text.trim();
+  if (!value) return false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Fall through to execCommand fallback.
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = value;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(area);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+type BentoMenuItem = {
+  id: string;
+  label: string;
+  onSelect: () => void;
+};
+
+function BentoCardMenu({
+  dark,
+  items,
+  ariaLabel = "Card options",
+}: {
+  dark: boolean;
+  items: BentoMenuItem[];
+  ariaLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  const updatePosition = () => {
+    const button = buttonRef.current;
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    const menuWidth = 168;
+    const left = Math.min(
+      Math.max(8, rect.right - menuWidth),
+      window.innerWidth - menuWidth - 8,
+    );
+    setCoords({ top: rect.bottom + 4, left });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    updatePosition();
+    const onReposition = () => updatePosition();
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  if (!items.length) return null;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title={ariaLabel}
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((value) => !value);
+        }}
+        className={clsx(
+          "inline-flex h-7 w-7 items-center justify-center rounded-full border transition",
+          dark
+            ? "border-gray-600 text-gray-400 hover:border-gray-500 hover:bg-gray-800 hover:text-white"
+            : "border-slate-300 text-slate-400 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700",
+        )}
+      >
+        <IconMore size={14} />
+      </button>
+      {open &&
+        coords &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            style={{ top: coords.top, left: coords.left }}
+            className={clsx(
+              "fixed z-[80] min-w-[10.5rem] overflow-hidden rounded-xl border py-1 shadow-xl",
+              dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white",
+            )}
+          >
+            {items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="menuitem"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpen(false);
+                  item.onSelect();
+                }}
+                className={clsx(
+                  "block w-full px-3 py-2 text-left text-[11px] font-semibold transition",
+                  dark
+                    ? "text-gray-200 hover:bg-gray-800"
+                    : "text-slate-700 hover:bg-slate-50",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 export function ScorecardConsole({
   theme,
   card,
@@ -723,9 +877,42 @@ export function ScorecardConsole({
   const dark = theme === "dark";
   const personaDef = getPersona(persona);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
 
   const toggle = (id: string) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const toggleDomain = (id: string) => {
+    setExpanded((prev) => {
+      const opening = !prev[id];
+      const next: Record<string, boolean> = {
+        fit_overview: prev.fit_overview ?? false,
+        summary_overview: prev.summary_overview ?? false,
+        development_outlook: prev.development_outlook ?? false,
+      };
+      if (opening) next[id] = true;
+      return next;
+    });
+  };
+
+  const flashCopied = (key: string) => {
+    setCopiedKey(key);
+    if (copiedTimerRef.current != null) window.clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = window.setTimeout(() => {
+      setCopiedKey((current) => (current === key ? null : current));
+      copiedTimerRef.current = null;
+    }, 1500);
+  };
+
+  const copyWithFeedback = async (key: string, text: string) => {
+    const ok = await copyText(text);
+    if (ok) flashCopied(key);
+  };
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current != null) window.clearTimeout(copiedTimerRef.current);
+  }, []);
 
   const orderedDomains =
     card?.domain_priority && card.domain_priority.length > 0
@@ -750,12 +937,19 @@ export function ScorecardConsole({
     (highlight) => highlight.tone !== "positive",
   );
   const fit = fitRating(card?.fit_score);
+  const coordinateText = coordinates
+    ? `${coordinates.lat.toFixed(5)}, ${coordinates.lon.toFixed(5)}`
+    : (placeLabel ?? "");
   const copyLocation = () => {
-    const text = coordinates
-      ? `${coordinates.lat.toFixed(5)}, ${coordinates.lon.toFixed(5)}`
-      : placeLabel;
-    if (text) void navigator.clipboard?.writeText(text);
+    void copyWithFeedback("coordinates", coordinateText);
   };
+  const domainEntries = card
+    ? orderedDomains
+        .map((d) => ({ d, r: card.domains[d] }))
+        .filter((entry): entry is { d: string; r: DomainResult } => Boolean(entry.r))
+    : [];
+  const openDomainId = domainEntries.find(({ d }) => expanded[d])?.d ?? null;
+  const closedDomainEntries = domainEntries.filter(({ d }) => d !== openDomainId);
 
   return (
     <aside
@@ -779,12 +973,23 @@ export function ScorecardConsole({
           {card && (
             <>
               <div className={clsx("mt-2 border-t pt-2", dark ? "border-gray-800" : "border-slate-200")}>
-                <button type="button" onClick={copyLocation} className="inline-flex max-w-full items-center gap-2 text-left" title="Copy coordinates">
+                <button
+                  type="button"
+                  onClick={copyLocation}
+                  disabled={!coordinateText}
+                  className="inline-flex max-w-full items-center gap-2 text-left"
+                  title="Copy coordinates"
+                >
                   <IconPin size={14} className="shrink-0 text-amber-600" />
                   <span className="truncate text-sm font-bold tabular-nums text-amber-600">
-                    {coordinates ? `${coordinates.lat.toFixed(5)}, ${coordinates.lon.toFixed(5)}` : placeLabel}
+                    {coordinateText || "Coordinates unavailable"}
                   </span>
                   <IconCopy size={13} className={dark ? "text-gray-500" : "text-slate-400"} />
+                  {copiedKey === "coordinates" && (
+                    <span className={clsx("shrink-0 text-[10px] font-semibold uppercase tracking-wide", dark ? "text-teal-300" : "text-teal-700")}>
+                      Copied
+                    </span>
+                  )}
                 </button>
                 {(card.location.ward || card.location.area_council) && (
                   <p className={clsx("mt-1 truncate text-xs", dark ? "text-gray-400" : "text-slate-500")}>
@@ -859,7 +1064,7 @@ export function ScorecardConsole({
         </div>
       </div>
 
-      <div className="scorecard-scroll flex-1 overflow-y-auto px-2 py-2">
+      <div className="scorecard-scroll flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-2">
         {!card && !loading && !error && (
           <p className={clsx("text-sm leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
             Search a place, use your current location, or click the map to generate a Location
@@ -877,16 +1082,44 @@ export function ScorecardConsole({
         {error && <p className="text-sm text-status-emergency">Error: {error}</p>}
 
         {card && (
-          <div className="space-y-2.5">
-          <div className="grid grid-cols-2 gap-2">
-            <section className={clsx("bento-card col-span-2 overflow-hidden rounded-2xl border", dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white")}>
+          <div className="grid w-full grid-cols-2 gap-2">
+            <section className={clsx("bento-card relative col-span-2 w-full overflow-visible rounded-2xl border", dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white")}>
+              <div className="absolute right-2 top-2 z-10">
+                <BentoCardMenu
+                  dark={dark}
+                  ariaLabel="Fit card options"
+                  items={[
+                    {
+                      id: "view",
+                      label: (expanded.fit_overview ?? false) ? "Hide Details" : "View Details",
+                      onSelect: () => toggle("fit_overview"),
+                    },
+                    {
+                      id: "copy-fit",
+                      label: copiedKey === "fit" ? "Copied" : "Copy fit score",
+                      onSelect: () => {
+                        const scoreText = card.fit_score != null ? `${Math.round(card.fit_score)}/100` : "—";
+                        void copyWithFeedback(
+                          "fit",
+                          `${scoreText} · ${fit.label} · Fit for ${personaLabel}`,
+                        );
+                      },
+                    },
+                    ...(onEditAnalysis
+                      ? [{ id: "radius", label: "Adjust radius", onSelect: onEditAnalysis }]
+                      : []),
+                    ...(onOpenProfessional3D
+                      ? [{ id: "3d", label: "Open 3D site view", onSelect: onOpenProfessional3D }]
+                      : []),
+                  ]}
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => toggle("fit_overview")}
                 aria-expanded={expanded.fit_overview ?? false}
-                className="relative flex w-full items-center gap-3 p-3 text-left"
+                className="relative flex w-full items-center gap-3 p-3 pr-11 text-left"
               >
-                <IconMore size={17} className={clsx("absolute right-4 top-4", dark ? "text-gray-600" : "text-slate-300")} />
                 <ScoreRing score={card.fit_score ?? null} size="md" color={fit.color} label={`Fit for ${personaLabel}`} />
                 <div className="min-w-0 flex-1">
                   <p className={clsx("text-[11px] font-semibold uppercase tracking-wide", dark ? "text-gray-400" : "text-slate-500")}>Fit for {personaLabel}</p>
@@ -905,15 +1138,49 @@ export function ScorecardConsole({
             </section>
 
             {card.summary && (
-              <section className={clsx("bento-card col-span-2 overflow-hidden rounded-2xl border", dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white")}>
+              <section className={clsx("bento-card relative col-span-2 w-full overflow-visible rounded-2xl border", dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white")}>
+                <div className="absolute right-2 top-2 z-10">
+                  <BentoCardMenu
+                    dark={dark}
+                    ariaLabel="Summary card options"
+                    items={[
+                      {
+                        id: "view",
+                        label: (expanded.summary_overview ?? false) ? "Hide Details" : "View Details",
+                        onSelect: () => toggle("summary_overview"),
+                      },
+                      {
+                        id: "copy-summary",
+                        label: copiedKey === "summary" ? "Copied" : "Copy summary",
+                        onSelect: () => {
+                          void copyWithFeedback(
+                            "summary",
+                            card.summary!.replace(/\s*—\s*/g, " - ").replace(/\s*--\s*/g, " - "),
+                          );
+                        },
+                      },
+                      ...(overviewHighlights.length > 0
+                        ? [{
+                            id: "copy-takeaways",
+                            label: copiedKey === "takeaways" ? "Copied" : "Copy takeaways",
+                            onSelect: () => {
+                              const text = overviewHighlights
+                                .map((highlight) => `${highlight.title}: ${highlight.text}`)
+                                .join("\n");
+                              void copyWithFeedback("takeaways", text);
+                            },
+                          }]
+                        : []),
+                    ]}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => toggle("summary_overview")}
                   aria-expanded={expanded.summary_overview ?? false}
-                  className="relative w-full p-3 text-left"
+                  className="relative w-full p-3 pr-11 text-left"
                 >
-                  <IconMore size={16} className={clsx("absolute right-4 top-4", dark ? "text-gray-600" : "text-slate-300")} />
-                  <p className={clsx("pr-6 text-[11px] font-semibold uppercase tracking-wide", dark ? "text-gray-400" : "text-slate-500")}>What this means for you</p>
+                  <p className={clsx("pr-1 text-[11px] font-semibold uppercase tracking-wide", dark ? "text-gray-400" : "text-slate-500")}>What this means for you</p>
                   <p className={clsx("mt-2 text-sm font-normal leading-snug", dark ? "text-gray-300" : "text-slate-600")}>
                     {card.summary.replace(/\s*—\s*/g, " - ").replace(/\s*--\s*/g, " - ")}
                   </p>
@@ -1138,7 +1405,7 @@ export function ScorecardConsole({
             </div>
 
             {!isConsumerReport && (
-              <div className="col-span-2">
+              <div className="col-span-2 w-full">
                 <DevelopmentOutlookCard
                   card={card}
                   dark={dark}
@@ -1147,295 +1414,372 @@ export function ScorecardConsole({
                 />
               </div>
             )}
-              {orderedDomains.map((d) => {
-                const r = card.domains[d];
-                if (!r) return null;
-                const isFlood = d === "flood";
-                const isOpen = expanded[d] ?? false;
-                const rows = evidenceRows(d, r.evidence ?? {});
-                const bar = isFlood ? floodHazardColor(r) : scoreBarColor(r.score, r.status);
-                const highPriority = topDomains.has(d);
-                const compactDomain = !isOpen;
 
-                return (
-                  <section
-                    key={d}
-                    className={clsx(
-                      "bento-card overflow-hidden rounded-2xl border bg-white dark:bg-gray-900",
-                      compactDomain ? "col-span-1" : "col-span-2",
-                      dark ? "border-gray-800" : "border-slate-200",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggle(d)}
-                      className={clsx(
-                        "relative flex w-full gap-3 px-3 py-3",
-                        compactDomain ? "flex-col items-center text-center" : "items-start text-left",
-                      )}
-                      aria-expanded={isOpen}
-                    >
-                      <IconMore
-                        size={15}
+            {openDomainId && (() => {
+              const d = openDomainId;
+              const r = card.domains[d]!;
+              const isFlood = d === "flood";
+              const rows = evidenceRows(d, r.evidence ?? {});
+              const bar = isFlood ? floodHazardColor(r) : scoreBarColor(r.score, r.status);
+              const highPriority = topDomains.has(d);
+              const badge = isFlood
+                ? floodRiskBadge(r, dark)
+                : qualityBadge(r.score, r.status, dark);
+              if (d === "livability" && r.rating) badge.label = r.rating;
+              const scoreSnippet = r.score !== null
+                ? r.score.toFixed(0)
+                : isFlood
+                  ? "N/P"
+                  : "—";
+              const evidenceText = [
+                r.note && r.status !== "demo" ? r.note : null,
+                ...rows.map((row) => `${row.label}: ${row.value}`),
+              ]
+                .filter(Boolean)
+                .join("\n");
+              const domainMenuItems: BentoMenuItem[] = [
+                {
+                  id: "view",
+                  label: "Hide Details",
+                  onSelect: () => toggleDomain(d),
+                },
+                {
+                  id: "copy-score",
+                  label: copiedKey === `domain-${d}` ? "Copied" : "Copy domain score",
+                  onSelect: () => {
+                    void copyWithFeedback(
+                      `domain-${d}`,
+                      `${domainLabel(d)} · ${scoreSnippet} · ${badge.label}`,
+                    );
+                  },
+                },
+                {
+                  id: "copy-evidence",
+                  label: copiedKey === `evidence-${d}` ? "Copied" : "Copy evidence",
+                  onSelect: () => {
+                    void copyWithFeedback(
+                      `evidence-${d}`,
+                      evidenceText || `${domainLabel(d)} · no evidence rows yet`,
+                    );
+                  },
+                },
+              ];
+              if (d === "amenities" && onViewNearbyList) {
+                domainMenuItems.push({
+                  id: "nearby",
+                  label: "View nearby list",
+                  onSelect: () => onViewNearbyList(),
+                });
+              }
+              if (d === "feasibility" && onOpenProfessional3D) {
+                domainMenuItems.push({
+                  id: "3d",
+                  label: "Open 3D site view",
+                  onSelect: onOpenProfessional3D,
+                });
+              }
+
+              return (
+                <section
+                  key={`open-${d}`}
+                  className={clsx(
+                    "bento-card relative col-span-2 w-full overflow-visible rounded-2xl border",
+                    dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white",
+                  )}
+                >
+                  <div className="absolute right-2 top-2 z-10">
+                    <BentoCardMenu
+                      dark={dark}
+                      ariaLabel={`${domainLabel(d)} options`}
+                      items={domainMenuItems}
+                    />
+                  </div>
+                  <div className="flex w-full items-start gap-3 p-3 pr-11 text-left">
+                    <ScoreRing score={r.score} size="sm" color={bar} label={domainLabel(d)} />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-display text-base font-semibold tracking-tight">
+                        {domainLabel(d)}
+                      </h3>
+                      <p
                         className={clsx(
-                          "pointer-events-none absolute right-2.5 top-2.5",
-                          dark ? "text-gray-600" : "text-slate-300",
-                          !compactDomain && "hidden",
+                          "mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                          dark ? "text-sky-400" : "text-sky-700",
                         )}
-                      />
-                      {compactDomain && <ScoreRing score={r.score} size="sm" color={bar} label={domainLabel(d)} />}
-                      <div className={clsx("min-w-0 flex-1", compactDomain && "w-full")}>
-                        <h3 className="font-display text-base font-semibold tracking-tight">
-                          {domainLabel(d)}
-                        </h3>
-                        <p
+                      >
+                        {domainKicker(d)}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span
                           className={clsx(
-                            "mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]",
-                            dark ? "text-sky-400" : "text-sky-700",
+                            "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                            badge.classes,
                           )}
                         >
-                          {domainKicker(d)}
-                        </p>
-                        <div className={clsx("mt-1.5 flex flex-wrap items-center gap-1.5", compactDomain ? "justify-center" : "justify-start")}>
-                          {(() => {
-                            const badge = isFlood
-                              ? floodRiskBadge(r, dark)
-                              : qualityBadge(r.score, r.status, dark);
-                            if (d === "livability" && r.rating) badge.label = r.rating;
+                          {badge.label}
+                        </span>
+                        {highPriority && (
+                          <span
+                            className={clsx(
+                              "rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+                              dark
+                                ? "border-sky-700/50 bg-sky-950/40 text-sky-300"
+                                : "border-sky-200 bg-sky-50 text-sky-800",
+                            )}
+                          >
+                            High priority · {personaLabel}
+                          </span>
+                        )}
+                        <span className="font-display text-lg font-semibold tabular-nums">
+                          {scoreSnippet}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleDomain(d)}
+                      className={clsx(
+                        "shrink-0 rounded-lg px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
+                        dark ? "text-gray-400 hover:bg-gray-800" : "text-slate-500 hover:bg-slate-50",
+                      )}
+                    >
+                      Hide
+                    </button>
+                  </div>
+                  <div className={clsx("border-t px-3 py-3", dark ? "border-gray-800" : "border-slate-100")}>
+                    {r.note && r.status !== "demo" && (
+                      <p className={clsx("mb-2 text-xs leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
+                        {r.note}
+                      </p>
+                    )}
+                    {r.status === "pending" && rows.length === 0 ? (
+                      <p className={clsx("text-[11px]", dark ? "text-gray-500" : "text-slate-400")}>
+                        No indicators yet - waiting on published data layers.
+                      </p>
+                    ) : d === "livability" ? (
+                      <HabitabilityDetails result={r} dark={dark} />
+                    ) : d === "feasibility" ? (
+                      <FeasibilityDetails result={r} dark={dark} />
+                    ) : (
+                      <table className="w-full border-collapse text-left">
+                        <tbody>
+                          {rows.map((row) => {
+                            const rawCount =
+                              d === "amenities" &&
+                              r.evidence.nearby_counts &&
+                              typeof r.evidence.nearby_counts === "object" &&
+                              !Array.isArray(r.evidence.nearby_counts)
+                                ? (r.evidence.nearby_counts as Record<string, unknown>)[row.key]
+                                : undefined;
+                            const amenityCount =
+                              row.key in AMENITY_LABELS && typeof rawCount === "number"
+                                ? rawCount
+                                : 0;
                             return (
-                              <span
+                              <tr
+                                key={row.key}
                                 className={clsx(
-                                  "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                                  badge.classes,
+                                  "border-b last:border-0",
+                                  dark ? "border-gray-800/80" : "border-slate-100",
                                 )}
                               >
-                                {badge.label}
-                              </span>
+                                <th
+                                  scope="row"
+                                  className={clsx(
+                                    "py-1.5 pr-3 text-[10px] font-semibold uppercase tracking-widest",
+                                    dark ? "text-gray-500" : "text-slate-400",
+                                  )}
+                                >
+                                  {row.label}
+                                </th>
+                                <td className="py-1.5 text-right text-[11px] font-medium tabular-nums">
+                                  <span className="block">{row.value}</span>
+                                  {amenityCount > 0 && onViewNearbyList && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onViewNearbyList(row.key)}
+                                      className={clsx(
+                                        "mt-1 text-[10px] font-semibold",
+                                        dark
+                                          ? "text-sky-400 hover:text-sky-300"
+                                          : "text-sky-700 hover:text-sky-800",
+                                      )}
+                                    >
+                                      View list · {amenityCount}
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
                             );
-                          })()}
-                          {isFlood && r.status === "degraded" && (
-                            <span
-                              className={clsx(
-                                "rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
-                                dark
-                                  ? "border-amber-700/60 bg-amber-950/40 text-amber-300"
-                                  : "border-amber-200 bg-amber-50 text-amber-800",
-                              )}
-                            >
-                              Limited data
-                            </span>
-                          )}
-                          {highPriority && !compactDomain && (
-                            <span
-                              className={clsx(
-                                "rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
-                                dark
-                                  ? "border-sky-700/50 bg-sky-950/40 text-sky-300"
-                                  : "border-sky-200 bg-sky-50 text-sky-800",
-                              )}
-                            >
-                              High priority · {personaLabel}
-                            </span>
-                          )}
-                        </div>
-                        <div className={clsx("mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-gray-800", compactDomain && "hidden")}>
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${r.score !== null ? Math.max(4, r.score) : 4}%`,
-                              backgroundColor: bar,
-                            }}
-                          />
-                        </div>
-                        {isFlood && !compactDomain && (
-                          <div
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                    {d === "market" && showMarketListings && (() => {
+                      const evidence = r.evidence ?? {};
+                      const listings = parseMarketListings(evidence);
+                      const listingKind = evidence.listing_kind === "rent" ? "rent" : "sale";
+                      return (
+                        <div className={clsx("mt-3 border-t pt-2.5", dark ? "border-gray-800" : "border-slate-100")}>
+                          <p
                             className={clsx(
-                              "mt-1 flex justify-between text-[9px] font-medium",
+                              "text-[10px] font-semibold uppercase tracking-widest",
                               dark ? "text-gray-500" : "text-slate-400",
                             )}
                           >
-                            <span>Lower risk</span>
-                            <span>Higher risk</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className={clsx("shrink-0 text-right", compactDomain && "hidden")}>
-                        <p className="font-display text-2xl font-semibold tabular-nums leading-none">
-                          {r.score !== null ? r.score.toFixed(0) : isFlood ? "N/P" : "—"}
-                        </p>
-                        {isFlood && (
-                          <p
-                            className={clsx(
-                              "mt-1 text-[9px] font-semibold uppercase tracking-wide",
-                              dark ? "text-gray-400" : "text-slate-500",
-                            )}
-                          >
-                            {r.score !== null ? "Hazard index / 100" : "Not published"}
+                            {listingKind === "rent"
+                              ? "Homes & apartments for rent"
+                              : "Homes & apartments for sale"}
                           </p>
-                        )}
-                        <p className={clsx("mt-1 text-[10px] uppercase tracking-wide", dark ? "text-gray-500" : "text-slate-400")}>
-                          {isOpen ? "Hide" : "Details"}
-                        </p>
-                      </div>
-                    </button>
-
-                    {isOpen && (
-                      <div className={clsx("border-t px-3 py-2.5", dark ? "border-gray-800" : "border-slate-100")}>
-                        {r.note && r.status !== "demo" && (
-                          <p className={clsx("mb-2 text-xs leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
-                            {r.note}
-                          </p>
-                        )}
-
-                        {r.status === "pending" && rows.length === 0 ? (
-                          <p className={clsx("text-[11px]", dark ? "text-gray-500" : "text-slate-400")}>
-                            No indicators yet — waiting on published data layers.
-                          </p>
-                        ) : d === "livability" ? (
-                          <HabitabilityDetails result={r} dark={dark} />
-                        ) : d === "feasibility" ? (
-                          <FeasibilityDetails result={r} dark={dark} />
-                        ) : (
-                          <table className="w-full border-collapse text-left">
-                            <tbody>
-                              {rows.map((row) => {
-                                const rawCount =
-                                  d === "amenities" &&
-                                  r.evidence.nearby_counts &&
-                                  typeof r.evidence.nearby_counts === "object" &&
-                                  !Array.isArray(r.evidence.nearby_counts)
-                                    ? (r.evidence.nearby_counts as Record<string, unknown>)[row.key]
-                                    : undefined;
-                                const amenityCount =
-                                  row.key in AMENITY_LABELS && typeof rawCount === "number"
-                                    ? rawCount
-                                    : 0;
-                                return (
-                                  <tr
-                                    key={row.key}
-                                    className={clsx(
-                                      "border-b last:border-0",
-                                      dark ? "border-gray-800/80" : "border-slate-100",
-                                    )}
-                                  >
-                                    <th
-                                      scope="row"
-                                      className={clsx(
-                                        "py-1.5 pr-3 text-[10px] font-semibold uppercase tracking-widest",
-                                        dark ? "text-gray-500" : "text-slate-400",
-                                      )}
-                                    >
-                                      {row.label}
-                                    </th>
-                                    <td className="py-1.5 text-right text-[11px] tabular-nums font-medium">
-                                      <span className="block">{row.value}</span>
-                                      {amenityCount > 0 && onViewNearbyList && (
-                                        <button
-                                          type="button"
-                                          onClick={() => onViewNearbyList(row.key)}
-                                          className={clsx(
-                                            "mt-1 text-[10px] font-semibold",
-                                            dark
-                                              ? "text-sky-400 hover:text-sky-300"
-                                              : "text-sky-700 hover:text-sky-800",
-                                          )}
-                                        >
-                                          View list · {amenityCount}
-                                        </button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        )}
-
-                        {d === "market" && showMarketListings && (() => {
-                          const evidence = r.evidence ?? {};
-                          const listings = parseMarketListings(evidence);
-                          const listingKind = evidence.listing_kind === "rent" ? "rent" : "sale";
-                          return (
-                            <div className={clsx("mt-3 border-t pt-2.5", dark ? "border-gray-800" : "border-slate-100")}>
-                              <p
-                                className={clsx(
-                                  "text-[10px] font-semibold uppercase tracking-widest",
-                                  dark ? "text-gray-500" : "text-slate-400",
-                                )}
-                              >
-                                {listingKind === "rent"
-                                  ? "Homes & apartments for rent"
-                                  : "Homes & apartments for sale"}
-                              </p>
-                              {listings.length === 0 ? (
-                                <p className={clsx("mt-1.5 text-[11px]", dark ? "text-gray-500" : "text-slate-400")}>
-                                  No source listings are available for this location yet.
-                                </p>
-                              ) : (
-                                <ul className="mt-2 space-y-2">
-                                  {listings.map((listing, index) => (
-                                    <li
-                                      key={listing.id ?? `${listing.title}-${index}`}
-                                      className={clsx(
-                                        "bento-card rounded-2xl border p-2.5",
-                                        dark ? "border-gray-800 bg-gray-950/40" : "border-slate-200 bg-white",
-                                      )}
-                                    >
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                          <p className="line-clamp-2 text-[11px] font-semibold leading-snug">{listing.title}</p>
-                                          <p className={clsx("mt-0.5 text-[10px]", dark ? "text-gray-500" : "text-slate-500")}>
-                                            {[listing.area, listing.address && listing.address !== listing.area ? listing.address : null]
-                                              .filter(Boolean)
-                                              .join(" · ")}
-                                          </p>
-                                        </div>
-                                        <p className={clsx("shrink-0 text-right text-[11px] font-semibold tabular-nums", dark ? "text-teal-300" : "text-teal-800")}>
-                                          {formatMarketPrice(listing.price, listing.unit)}
-                                        </p>
-                                      </div>
-                                      <div className={clsx("mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px]", dark ? "text-gray-500" : "text-slate-500")}>
-                                        {listing.bedrooms !== undefined && <span>{listing.bedrooms} bed</span>}
-                                        {listing.property_type && <span>{listing.property_type}</span>}
-                                        {listing.observed_at && <span>Observed {listing.observed_at}</span>}
-                                        {listing.source_url && (
-                                          <a
-                                            href={listing.source_url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className={clsx("font-semibold", dark ? "text-sky-400 hover:text-sky-300" : "text-sky-700 hover:text-sky-800")}
-                                          >
-                                            View source
-                                          </a>
-                                        )}
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                              <p className={clsx("mt-2 text-[10px] leading-relaxed", dark ? "text-amber-300/80" : "text-amber-800")}>
-                                Asking-price snapshot. Confirm current availability, price, and terms with the listing source.
-                              </p>
-                            </div>
-                          );
-                        })()}
-
-                        {r.confidence && r.status !== "pending" && (
-                          <p className={clsx("mt-2 text-[10px] uppercase tracking-wide", dark ? "text-gray-500" : "text-slate-400")}>
-                            Confidence · {r.confidence}
-                          </p>
-                        )}
-                      </div>
+                          {listings.length === 0 ? (
+                            <p className={clsx("mt-1.5 text-[11px]", dark ? "text-gray-500" : "text-slate-400")}>
+                              No source listings are available for this location yet.
+                            </p>
+                          ) : (
+                            <ul className="mt-2 space-y-2">
+                              {listings.map((listing, index) => (
+                                <li
+                                  key={listing.id ?? `${listing.title}-${index}`}
+                                  className={clsx(
+                                    "bento-card rounded-2xl border p-2.5",
+                                    dark ? "border-gray-800 bg-gray-950/40" : "border-slate-200 bg-white",
+                                  )}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="line-clamp-2 text-[11px] font-semibold leading-snug">{listing.title}</p>
+                                      <p className={clsx("mt-0.5 text-[10px]", dark ? "text-gray-500" : "text-slate-500")}>
+                                        {[listing.area, listing.address && listing.address !== listing.area ? listing.address : null]
+                                          .filter(Boolean)
+                                          .join(" · ")}
+                                      </p>
+                                    </div>
+                                    <p className={clsx("shrink-0 text-right text-[11px] font-semibold tabular-nums", dark ? "text-teal-300" : "text-teal-800")}>
+                                      {formatMarketPrice(listing.price, listing.unit)}
+                                    </p>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {r.confidence && r.status !== "pending" && (
+                      <p className={clsx("mt-2 text-[10px] uppercase tracking-wide", dark ? "text-gray-500" : "text-slate-400")}>
+                        Confidence · {r.confidence}
+                      </p>
                     )}
-                  </section>
-                );
-              })}
-            </div>
+                  </div>
+                </section>
+              );
+            })()}
+
+            {closedDomainEntries.map(({ d, r }) => {
+              const isFlood = d === "flood";
+              const rows = evidenceRows(d, r.evidence ?? {});
+              const bar = isFlood ? floodHazardColor(r) : scoreBarColor(r.score, r.status);
+              const badge = isFlood
+                ? floodRiskBadge(r, dark)
+                : qualityBadge(r.score, r.status, dark);
+              if (d === "livability" && r.rating) badge.label = r.rating;
+              const scoreSnippet = r.score !== null
+                ? r.score.toFixed(0)
+                : isFlood
+                  ? "N/P"
+                  : "—";
+              const evidenceText = [
+                r.note && r.status !== "demo" ? r.note : null,
+                ...rows.map((row) => `${row.label}: ${row.value}`),
+              ]
+                .filter(Boolean)
+                .join("\n");
+              const domainMenuItems: BentoMenuItem[] = [
+                {
+                  id: "view",
+                  label: "View Details",
+                  onSelect: () => toggleDomain(d),
+                },
+                {
+                  id: "copy-score",
+                  label: copiedKey === `domain-${d}` ? "Copied" : "Copy domain score",
+                  onSelect: () => {
+                    void copyWithFeedback(
+                      `domain-${d}`,
+                      `${domainLabel(d)} · ${scoreSnippet} · ${badge.label}`,
+                    );
+                  },
+                },
+                {
+                  id: "copy-evidence",
+                  label: copiedKey === `evidence-${d}` ? "Copied" : "Copy evidence",
+                  onSelect: () => {
+                    void copyWithFeedback(
+                      `evidence-${d}`,
+                      evidenceText || `${domainLabel(d)} · no evidence rows yet`,
+                    );
+                  },
+                },
+              ];
+              if (d === "amenities" && onViewNearbyList) {
+                domainMenuItems.push({
+                  id: "nearby",
+                  label: "View nearby list",
+                  onSelect: () => onViewNearbyList(),
+                });
+              }
+              if (d === "feasibility" && onOpenProfessional3D) {
+                domainMenuItems.push({
+                  id: "3d",
+                  label: "Open 3D site view",
+                  onSelect: onOpenProfessional3D,
+                });
+              }
+
+              return (
+                <section
+                  key={d}
+                  className={clsx(
+                    "bento-card relative col-span-1 flex min-h-[11.5rem] w-full min-w-0 flex-col overflow-visible rounded-[1.5rem] border",
+                    dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white",
+                  )}
+                >
+                  <div className="absolute right-2.5 top-2.5 z-10">
+                    <BentoCardMenu
+                      dark={dark}
+                      ariaLabel={`${domainLabel(d)} options`}
+                      items={domainMenuItems}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleDomain(d)}
+                    className="flex w-full flex-1 flex-col items-center justify-center px-3 pb-4 pt-5 text-center"
+                    aria-expanded={false}
+                  >
+                    <ScoreRing score={r.score} size="md" color={bar} label={domainLabel(d)} />
+                    <h3 className={clsx(
+                      "mt-3 font-display text-base font-semibold tracking-tight",
+                      dark ? "text-gray-100" : "text-slate-900",
+                    )}>
+                      {domainLabel(d)}
+                    </h3>
+                    <span
+                      className={clsx(
+                        "mt-2 inline-flex max-w-full rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                        badge.classes,
+                      )}
+                    >
+                      {badge.label}
+                    </span>
+                  </button>
+                </section>
+              );
+            })}
 
             {Object.keys(card.layer_versions).length > 0 && (
               <footer
                 className={clsx(
-                  "border-t pt-3 text-[10px]",
+                  "col-span-2 border-t pt-3 text-[10px]",
                   dark ? "border-gray-800 text-gray-500" : "border-slate-200 text-slate-400",
                 )}
               >
@@ -1445,8 +1789,8 @@ export function ScorecardConsole({
                   .join(" · ")}
               </footer>
             )}
-            <p className={clsx("pb-2 text-center text-[10px] leading-relaxed", dark ? "text-gray-600" : "text-slate-400")}>
-              Advisory property intelligence — not a legal or engineering sign-off · Geoinfotech / GGIS
+            <p className={clsx("col-span-2 pb-2 text-center text-[10px] leading-relaxed", dark ? "text-gray-600" : "text-slate-400")}>
+              Advisory property intelligence - not a legal or engineering sign-off · Geoinfotech / GGIS
             </p>
           </div>
         )}

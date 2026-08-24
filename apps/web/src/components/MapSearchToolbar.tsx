@@ -45,7 +45,7 @@ export function MapSearchToolbar({
   };
 
   return (
-    <div className={clsx("min-w-0", compact ? "w-full" : "w-[min(36rem,calc(100vw-26rem))]") }>
+    <div className={clsx("min-w-0", compact ? "w-full" : "w-[min(36rem,calc(100vw-30rem))]") }>
       <div className="flex min-w-0 items-center gap-2">
         <PersonaSelect theme={theme} persona={persona} onPersonaChange={onPersonaChange} />
         <div className="min-w-0 flex-1">
