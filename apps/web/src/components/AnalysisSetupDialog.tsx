@@ -137,9 +137,9 @@ export function AnalysisSetupDialog({
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={phase === "analysing" || generatingPdf}>
       {dismissible ? (
-        <button type="button" className="absolute inset-0 bg-slate-950/25 backdrop-blur-[2px]" aria-label="Cancel location analysis setup" onClick={onCancel} />
+        <button type="button" className="absolute inset-0 bg-slate-950/10 backdrop-blur-[2px]" aria-label="Cancel location analysis setup" onClick={onCancel} />
       ) : (
-        <div className="absolute inset-0 bg-slate-950/25 backdrop-blur-[2px]" aria-hidden />
+        <div className="absolute inset-0 bg-slate-950/10 backdrop-blur-[2px]" aria-hidden />
       )}
       <div ref={panelRef} className={clsx(
         "glass-dialog relative z-10 flex max-h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl border sm:rounded-[1.75rem]",

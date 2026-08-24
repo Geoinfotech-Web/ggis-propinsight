@@ -162,7 +162,7 @@ export function LayersPanel({ theme, layers, onToggle, radiusKm = 5 }: Props) {
       {expanded && (
         <div
           className={clsx(
-            "glass-surface absolute right-full top-0 z-30 mr-2 w-[min(15.5rem,calc(100vw-4.5rem))] overflow-hidden rounded-2xl border",
+            "glass-surface toolkit-glass absolute right-full top-0 z-30 mr-2 w-[min(15.5rem,calc(100vw-4.5rem))] overflow-hidden rounded-2xl border",
             dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white",
           )}
           role="menu"

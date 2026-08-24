@@ -60,7 +60,7 @@ export function NearbyAmenitiesList({ theme, items, open, category, elevated = f
     >
       <button
         type="button"
-        className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-slate-950/10 backdrop-blur-[2px]"
         aria-label="Close amenities list"
         onClick={onClose}
       />

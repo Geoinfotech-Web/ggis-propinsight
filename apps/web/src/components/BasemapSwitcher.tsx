@@ -75,7 +75,7 @@ export function BasemapSwitcher({ theme, activeId, onChange }: Props) {
       {expanded && (
         <div
           className={clsx(
-            "glass-surface absolute right-full top-0 z-30 mr-2 max-h-[min(50vh,22rem)] w-40 divide-y overflow-y-auto rounded-2xl border",
+            "glass-surface toolkit-glass absolute right-full top-0 z-30 mr-2 max-h-[min(50vh,22rem)] w-40 divide-y overflow-y-auto rounded-2xl border",
             dark
               ? "divide-gray-800 border-gray-700 bg-gray-900"
               : "divide-slate-200 border-slate-200 bg-white",
@@ -112,7 +112,9 @@ export function BasemapSwitcher({ theme, activeId, onChange }: Props) {
                 className={clsx(
                   "flex w-full items-center gap-2.5 px-3 py-2.5 text-xs transition-colors",
                   active
-                    ? "bg-blue-950/60 text-blue-300"
+                    ? dark
+                      ? "bg-blue-950/45 text-blue-300"
+                      : "bg-sky-100/45 text-sky-800"
                     : dark
                       ? "text-gray-300 hover:bg-gray-800/80 hover:text-white"
                       : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
