@@ -169,12 +169,23 @@ class GGISFloodClient:
                 resp = await c.post(
                     f"{self.base_url}{path}", content=body, headers=_headers("POST", path, body)
                 )
-                if resp.status_code in {404, 405}:
-                    return await self._developer_risk(geometry)
+                # Live GFW currently publishes developer site-assessment; treat
+                # missing/broken legacy risk routes as a signal to use that path.
+                if resp.status_code in {404, 405, 500, 501, 502, 503}:
+                    try:
+                        return await self._developer_risk(geometry)
+                    except (httpx.HTTPError, ValueError, TypeError) as fallback_exc:
+                        return self._degrade(
+                            last_known,
+                            f"legacy risk {resp.status_code}; site-assessment failed ({fallback_exc})",
+                        )
                 resp.raise_for_status()
                 data = resp.json()
         except (httpx.HTTPError, ValueError) as exc:
-            return self._degrade(last_known, str(exc))
+            try:
+                return await self._developer_risk(geometry)
+            except (httpx.HTTPError, ValueError, TypeError):
+                return self._degrade(last_known, str(exc))
 
         risk_class = data.get("risk_class")
         risk_score = validated_risk_score(data.get("risk_score"))
@@ -253,13 +264,14 @@ class GGISFloodClient:
         path = "/v1/meta/model"
         async with httpx.AsyncClient(timeout=self.timeout) as c:
             resp = await c.get(f"{self.base_url}{path}", headers=_headers("GET", path, b""))
-            if resp.status_code in {404, 405}:
+            if resp.status_code in {404, 405, 500, 501, 502, 503}:
                 health_path = "/v1/health"
                 health = await c.get(
                     f"{self.base_url}{health_path}",
                     headers=_headers("GET", health_path, b""),
                 )
-                health.raise_for_status()
+                if health.status_code >= 400:
+                    health.raise_for_status()
                 data = health.json()
                 version = data.get("version") if isinstance(data, dict) else None
                 self._model_version = f"developer-api-{version}" if version else None

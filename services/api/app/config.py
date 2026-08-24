@@ -8,7 +8,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="",
+        extra="ignore",
+        # Repo-root `.env` (docker-compose) and local `services/api/.env`.
+        env_file=("../.env", ".env"),
+        env_file_encoding="utf-8",
+    )
 
     # App
     aia_env: str = "dev"
