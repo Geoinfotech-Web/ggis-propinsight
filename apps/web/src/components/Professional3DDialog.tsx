@@ -202,7 +202,7 @@ export function Professional3DDialog({
 
         <aside
           className={clsx(
-            "absolute left-3 top-3 z-10 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border p-3 shadow-2xl backdrop-blur-md sm:left-4 sm:top-4 sm:p-4",
+            "glass-surface absolute left-3 top-3 z-10 w-[min(20rem,calc(100vw-1.5rem))] rounded-3xl border p-3 sm:left-4 sm:top-4 sm:p-4",
             dark
               ? "border-gray-700 bg-gray-950/90 text-gray-100"
               : "border-white/80 bg-white/92 text-slate-900",

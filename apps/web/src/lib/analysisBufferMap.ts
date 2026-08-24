@@ -95,7 +95,7 @@ export function showAnalysisBuffer(
       filter: ["==", ["get", "kind"], "area"],
       paint: {
         "fill-color": dark ? "#38bdf8" : "#0369a1",
-        "fill-opacity": dark ? 0.12 : 0.09,
+        "fill-opacity": dark ? 0.06 : 0.04,
       },
     });
   }

@@ -89,7 +89,7 @@ export function SearchBar({
     <div ref={wrapRef} className="relative w-full">
       <div
         className={clsx(
-          "flex items-center gap-2 border shadow-lg backdrop-blur transition-colors focus-within:border-sky-500/70",
+          "glass-surface flex items-center gap-2 border transition-colors focus-within:border-sky-500/70",
           large ? "rounded-2xl px-4" : "rounded-lg px-3",
           dark ? "border-gray-700 bg-gray-900/95" : "border-slate-200 bg-white/96",
         )}
@@ -141,7 +141,7 @@ export function SearchBar({
       {open && results.length > 0 && (
         <div
           className={clsx(
-            "absolute top-full z-50 mt-1.5 w-full divide-y overflow-hidden border shadow-2xl backdrop-blur",
+            "glass-surface absolute top-full z-50 mt-1.5 w-full divide-y overflow-hidden border",
             large ? "rounded-2xl" : "rounded-lg",
             dark
               ? "divide-gray-800 border-gray-700 bg-gray-900/98"

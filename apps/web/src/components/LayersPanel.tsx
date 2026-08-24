@@ -141,8 +141,6 @@ export function LayersPanel({ theme, layers, onToggle, radiusKm = 5 }: Props) {
     };
   }, [expanded]);
 
-  const activeCount = layers.filter((l) => l.enabled).length;
-
   return (
     <div ref={rootRef} className="relative z-20">
       <button
@@ -150,43 +148,23 @@ export function LayersPanel({ theme, layers, onToggle, radiusKm = 5 }: Props) {
         onClick={() => setExpanded((v) => !v)}
         title="Layers"
         className={clsx(
-          "inline-flex h-10 w-10 items-center justify-center rounded-xl border shadow-lg transition",
+          "glass-tool liquid-tool-mint inline-flex h-10 w-10 items-center justify-center rounded-xl border transition",
           dark
-            ? "border-gray-700 bg-gray-900 text-gray-200 hover:border-gray-500 hover:bg-gray-800 hover:text-white"
-            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900",
+            ? "border-teal-900/80 bg-teal-950/60 text-teal-300 hover:border-teal-700 hover:bg-teal-950/80"
+            : "border-teal-100/80 bg-teal-50/60 text-teal-700 hover:border-teal-300 hover:bg-teal-100/80",
         )}
-        style={
-          dark
-            ? { backgroundColor: "#111827", borderColor: "#374151" }
-            : { backgroundColor: "#ffffff", borderColor: "#cbd5e1" }
-        }
         aria-label="Layers"
         aria-expanded={expanded}
       >
-        <span className="relative inline-flex">
-          <IconLayers size={16} className={dark ? "text-gray-300" : "text-slate-600"} />
-          {activeCount > 0 && (
-            <span
-              className="absolute -bottom-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-semibold text-white shadow-sm"
-              style={{ border: `1px solid ${dark ? "#111827" : "#e2e8f0"}` }}
-            >
-              {activeCount}
-            </span>
-          )}
-        </span>
+        <IconLayers size={17} className={dark ? "text-teal-300" : "text-teal-700"} />
       </button>
 
       {expanded && (
         <div
           className={clsx(
-            "absolute right-full top-0 z-30 mr-2 w-[min(15.5rem,calc(100vw-4.5rem))] overflow-hidden rounded-lg border shadow-2xl",
+            "glass-surface absolute right-full top-0 z-30 mr-2 w-[min(15.5rem,calc(100vw-4.5rem))] overflow-hidden rounded-2xl border",
             dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white",
           )}
-          style={
-            dark
-              ? { backgroundColor: "#111827", borderColor: "#374151" }
-              : { backgroundColor: "#ffffff", borderColor: "#cbd5e1" }
-          }
           role="menu"
           aria-label="Overlay layers"
         >

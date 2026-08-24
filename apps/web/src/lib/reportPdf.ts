@@ -17,7 +17,13 @@ export type LocationReportInput = {
   lat: number;
   radiusKm: number;
   placeLabel: string;
+  reportTitle?: string;
   signal?: AbortSignal;
+};
+
+export type GeneratedLocationReport = {
+  blob: Blob;
+  filename: string;
 };
 
 type ReportMapPoint = {
@@ -439,7 +445,12 @@ async function captureStandardMap(input: LocationReportInput): Promise<string> {
       paint: { "circle-radius": 5, "circle-color": "#0369a1" },
     });
     map.triggerRepaint();
-    await waitForMapIdle(map, input.signal);
+    try {
+      await waitForMapIdle(map, input.signal, 12_000);
+    } catch (error) {
+      if ((error as Error).name === "AbortError") throw error;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 750));
+    }
     throwIfAborted(input.signal);
     return drawMapCaption(map.getCanvas(), container, input, points);
   } finally {
@@ -561,7 +572,7 @@ function drawSinglePage(doc: jsPDF, input: LocationReportInput, mapImage: string
   doc.text("FCT location intelligence", 12, 13);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text(`${persona.label} location report`, 285, 8, { align: "right" });
+  doc.text(truncate(input.reportTitle || `${persona.label} location report`, 78), 285, 8, { align: "right" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
   doc.text(new Date().toLocaleDateString("en-GB"), 285, 13, { align: "right" });
@@ -569,12 +580,12 @@ function drawSinglePage(doc: jsPDF, input: LocationReportInput, mapImage: string
   doc.setTextColor(15, 23, 42);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
-  doc.text(truncate(input.placeLabel, 90), 12, 27);
+  doc.text(truncate(input.reportTitle || input.placeLabel, 90), 12, 27);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
   doc.text(
-    `${persona.label} - ${input.radiusKm} km radius - ${input.lat.toFixed(5)}, ${input.lon.toFixed(5)}`,
+    `${truncate(input.placeLabel, 48)} - ${persona.label} - ${input.radiusKm} km radius - ${input.lat.toFixed(5)}, ${input.lon.toFixed(5)}`,
     12,
     33,
   );
@@ -665,7 +676,7 @@ function drawSinglePage(doc: jsPDF, input: LocationReportInput, mapImage: string
   );
 }
 
-export async function generateLocationReport(input: LocationReportInput): Promise<void> {
+export async function buildLocationReport(input: LocationReportInput): Promise<GeneratedLocationReport> {
   throwIfAborted(input.signal);
   const mapImage = await captureStandardMap(input);
   throwIfAborted(input.signal);
@@ -674,7 +685,25 @@ export async function generateLocationReport(input: LocationReportInput): Promis
   const doc = new JsPdf({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
   drawSinglePage(doc, input, mapImage);
   const date = new Date().toISOString().slice(0, 10);
-  const filename = `PropInsight-${safeFilename(input.placeLabel)}-${safeFilename(getPersona(input.persona).label)}-${date}.pdf`;
+  const filename = `PropInsight-${safeFilename(input.reportTitle || input.placeLabel)}-${safeFilename(getPersona(input.persona).label)}-${date}.pdf`;
   throwIfAborted(input.signal);
-  doc.save(filename);
+  return { blob: doc.output("blob"), filename };
+}
+
+export function downloadLocationReport(report: GeneratedLocationReport): void {
+  const url = URL.createObjectURL(report.blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = report.filename;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+export async function generateLocationReport(input: LocationReportInput): Promise<GeneratedLocationReport> {
+  const report = await buildLocationReport(input);
+  downloadLocationReport(report);
+  return report;
 }

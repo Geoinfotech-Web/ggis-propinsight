@@ -6,6 +6,7 @@ import {
   IconCheck,
   IconChevronLeft,
   IconChevronRight,
+  IconGlobe,
   IconLayers,
   IconMap,
   IconMoon,
@@ -35,9 +36,6 @@ export function BasemapSwitcher({ theme, activeId, onChange }: Props) {
   const [expanded, setExpanded] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const dark = theme === "dark";
-  const current = BASEMAPS.find((b) => b.id === activeId) ?? BASEMAPS[0];
-  const CurrentIcon = BASEMAP_ICON[current.id] ?? IconLayers;
-
   useEffect(() => {
     if (!expanded) return undefined;
     const onPointerDown = (event: PointerEvent) => {
@@ -63,43 +61,25 @@ export function BasemapSwitcher({ theme, activeId, onChange }: Props) {
         onClick={() => setExpanded((v) => !v)}
         title="Change basemap"
         className={clsx(
-          "inline-flex h-10 w-10 items-center justify-center rounded-xl border shadow-lg transition",
+          "glass-tool liquid-tool-ivory inline-flex h-10 w-10 items-center justify-center rounded-xl border transition",
           dark
-            ? "border-gray-700 bg-gray-900 text-gray-200 hover:border-gray-500 hover:bg-gray-800 hover:text-white"
-            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900",
+            ? "border-gray-700 bg-gray-900/60 text-gray-200 hover:border-gray-500 hover:bg-gray-800/80 hover:text-white"
+            : "border-white/70 bg-white/60 text-slate-600 hover:border-slate-300 hover:text-slate-900",
         )}
-        style={
-          dark
-            ? { backgroundColor: "#111827", borderColor: "#374151" }
-            : { backgroundColor: "#ffffff", borderColor: "#cbd5e1" }
-        }
         aria-label="Change basemap"
         aria-expanded={expanded}
       >
-        <span className="relative inline-flex">
-          <IconLayers size={16} className={dark ? "text-gray-300" : "text-slate-600"} />
-          <span
-            className="absolute -bottom-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm"
-            style={{ border: `1px solid ${dark ? "#111827" : "#e2e8f0"}` }}
-          >
-            <CurrentIcon size={9} />
-          </span>
-        </span>
+        <IconGlobe size={17} className={dark ? "text-sky-300" : "text-sky-700"} />
       </button>
 
       {expanded && (
         <div
           className={clsx(
-            "absolute right-full top-0 z-30 mr-2 max-h-[min(50vh,22rem)] w-40 divide-y overflow-y-auto rounded-lg border shadow-2xl",
+            "glass-surface absolute right-full top-0 z-30 mr-2 max-h-[min(50vh,22rem)] w-40 divide-y overflow-y-auto rounded-2xl border",
             dark
               ? "divide-gray-800 border-gray-700 bg-gray-900"
               : "divide-slate-200 border-slate-200 bg-white",
           )}
-          style={
-            dark
-              ? { backgroundColor: "#111827", borderColor: "#374151" }
-              : { backgroundColor: "#ffffff", borderColor: "#cbd5e1" }
-          }
           role="menu"
           aria-label="Basemap options"
         >

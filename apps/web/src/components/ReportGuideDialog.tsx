@@ -131,7 +131,7 @@ export function ReportGuideDialog({ open, theme, card, persona, placeLabel, onCl
       <div
         ref={panelRef}
         className={clsx(
-          "relative z-10 flex max-h-[min(92dvh,46rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border shadow-2xl sm:rounded-3xl",
+          "glass-surface relative z-10 flex max-h-[min(92dvh,46rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border sm:rounded-3xl",
           dark
             ? "border-gray-700 bg-gray-900 text-gray-100"
             : "border-slate-200 bg-white text-slate-900",

@@ -60,13 +60,13 @@ export function NearbyAmenitiesList({ theme, items, open, category, elevated = f
     >
       <button
         type="button"
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px]"
         aria-label="Close amenities list"
         onClick={onClose}
       />
       <div
         className={clsx(
-          "relative z-10 flex max-h-[min(85vh,36rem)] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border shadow-2xl sm:rounded-2xl",
+          "glass-surface view-list-glass relative z-10 flex max-h-[min(85vh,36rem)] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border sm:rounded-3xl",
           dark ? "border-gray-700 bg-gray-900 text-gray-100" : "border-slate-200 bg-white text-slate-900",
         )}
       >

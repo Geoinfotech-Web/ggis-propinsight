@@ -14,9 +14,10 @@ import {
   type PdfGenerationStatus,
 } from "./components/AnalysisSetupDialog";
 import { BasemapSwitcher } from "./components/BasemapSwitcher";
-import { IconHome } from "./components/Icons";
+import { IconCompass, IconHome } from "./components/Icons";
 import { LayersPanel, type OverlayLayer, type OverlayLayerId } from "./components/LayersPanel";
 import { MapLegend } from "./components/MapLegend";
+import { MapSearchToolbar } from "./components/MapSearchToolbar";
 import { Map3DControl } from "./components/Map3DControl";
 import { NearbyAmenitiesList, type NearbyPoiItem } from "./components/NearbyAmenitiesList";
 import { Professional3DDialog } from "./components/Professional3DDialog";
@@ -32,7 +33,7 @@ import {
   createPoiSymbolElement,
   nearbyFromScorecard,
 } from "./lib/amenitiesMap";
-import { getPersona, loadPersona, savePersona, type PersonaKey } from "./lib/personas";
+import { loadPersona, savePersona, type PersonaKey } from "./lib/personas";
 import { hideLandUseLayer, showLandUseLayer } from "./lib/landUseMap";
 import { hideLandCoverLayer, showLandCoverLayer } from "./lib/landCoverMap";
 import { mappedProjects } from "./lib/projectsMap";
@@ -65,15 +66,6 @@ const POI_LAYER_BY_CATEGORY: Record<string, OverlayLayerId> = {
   fuel: "fuel_poi",
   police: "security_poi",
 };
-
-const AMENITY_LAYER_IDS: OverlayLayerId[] = [
-  "school_poi",
-  "hospital_poi",
-  "bank_poi",
-  "market_poi",
-  "power_poi",
-  "fuel_poi",
-];
 
 function poiMarkerSizeForZoom(zoom: number): number {
   return Math.round(Math.min(38, Math.max(18, 18 + (zoom - 9) * 2.5)));
@@ -219,6 +211,7 @@ export default function App() {
   const analysisRequestRef = useRef(0);
   const analysisAbortRef = useRef<AbortController | null>(null);
   const pdfAbortRef = useRef<AbortController | null>(null);
+  const reportTitleBeforeSetupRef = useRef("Untitled 1");
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") return "light";
     return loadTheme();
@@ -234,6 +227,9 @@ export default function App() {
   const [pdfStatus, setPdfStatus] = useState<PdfGenerationStatus>("idle");
   const [committedPdfStatus, setCommittedPdfStatus] = useState<PdfGenerationStatus>("idle");
   const [committedPdfError, setCommittedPdfError] = useState<string | null>(null);
+  const [reportTitle, setReportTitle] = useState("Untitled 1");
+  const [shareGenerating, setShareGenerating] = useState(false);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [basemapId, setBasemapId] = useState<BasemapId>(DEFAULT_BASEMAP_ID);
   const [view3D, setView3D] = useState(false);
@@ -241,13 +237,13 @@ export default function App() {
   const [card, setCard] = useState<Scorecard | null>(null);
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [updatingMessage, setUpdatingMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [desktopReportOpen, setDesktopReportOpen] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(true);
   const [amenitiesListOpen, setAmenitiesListOpen] = useState(false);
   const [amenitiesListCategory, setAmenitiesListCategory] = useState<string | null>(null);
+  const [selectedPoi, setSelectedPoi] = useState<NearbyPoiItem | null>(null);
   const [reportGuideOpen, setReportGuideOpen] = useState(false);
   const [professional3DOpen, setProfessional3DOpen] = useState(false);
   const [searchResetKey, setSearchResetKey] = useState(0);
@@ -255,6 +251,12 @@ export default function App() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!shareNotice) return undefined;
+    const timeout = window.setTimeout(() => setShareNotice(null), 6_000);
+    return () => window.clearTimeout(timeout);
+  }, [shareNotice]);
 
   const closeReportGuide = useCallback(() => setReportGuideOpen(false), []);
 
@@ -285,7 +287,6 @@ export default function App() {
       profile: PersonaKey = persona,
       radiusKm: number = analysisRadiusKm,
       preserveCard = false,
-      updateLabel?: string,
     ) => {
       const map = mapRef.current;
       if (!map) return;
@@ -301,15 +302,13 @@ export default function App() {
       }
 
       lastPointRef.current = { lon: lng, lat, label };
+      setSelectedPoi(null);
       setPlaceLabel(label ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
       setDesktopReportOpen(true);
       setSheetOpen(true);
-      if (preserveCard) {
-        setUpdatingMessage(updateLabel ?? "Updating report…");
-      } else {
+      if (!preserveCard) {
         setCard(null);
         setLoading(true);
-        setUpdatingMessage(null);
       }
       setError(null);
       const requestId = ++analysisRequestRef.current;
@@ -335,7 +334,6 @@ export default function App() {
       } finally {
         if (requestId === analysisRequestRef.current) {
           setLoading(false);
-          setUpdatingMessage(null);
           analysisAbortRef.current = null;
         }
       }
@@ -357,26 +355,29 @@ export default function App() {
         key,
         analysisRadiusKm,
         true,
-        `Updating report for ${getPersona(key).label}…`,
       );
     }
   };
 
   const beginAnalysisSetup = useCallback(
-    (lon: number, lat: number, label?: string) => {
+    (lon: number, lat: number, label?: string, preserveTitle = false) => {
+      reportTitleBeforeSetupRef.current = reportTitle;
       analysisAbortRef.current?.abort();
       analysisRequestRef.current += 1;
       setLoading(false);
-      setUpdatingMessage(null);
       setAnalysisPhase("setup");
       setPendingCard(null);
       setAnalysisFlowError(null);
       setPdfStatus("idle");
       setPdfError(null);
+      setShareNotice(null);
       setReportGuideOpen(false);
       setProfessional3DOpen(false);
       setSetupPersona(persona);
       setSetupRadiusKm(analysisRadiusKm);
+      if (!preserveTitle) {
+        setReportTitle((label?.trim() || `${lat.toFixed(5)}, ${lon.toFixed(5)}`).slice(0, 80));
+      }
       setCandidate({ lon, lat, label });
       mapRef.current?.fitBounds(analysisBufferBounds(lon, lat, analysisRadiusKm), {
         padding: 72,
@@ -384,7 +385,7 @@ export default function App() {
         maxZoom: 13,
       });
     },
-    [analysisRadiusKm, persona],
+    [analysisRadiusKm, persona, reportTitle],
   );
 
   const cancelAnalysisSetup = useCallback(() => {
@@ -399,6 +400,7 @@ export default function App() {
     setPdfStatus("idle");
     setPdfError(null);
     setLoading(false);
+    setReportTitle(reportTitleBeforeSetupRef.current);
     const last = lastPointRef.current;
     if (last) {
       mapRef.current?.fitBounds(
@@ -510,6 +512,7 @@ export default function App() {
         lat: candidate.lat,
         radiusKm: setupRadiusKm,
         placeLabel: candidate.label ?? `${candidate.lat.toFixed(5)}, ${candidate.lon.toFixed(5)}`,
+        reportTitle,
         signal: controller.signal,
       });
       if (!controller.signal.aborted) setPdfStatus("downloaded");
@@ -520,7 +523,7 @@ export default function App() {
     } finally {
       if (pdfAbortRef.current === controller) pdfAbortRef.current = null;
     }
-  }, [candidate, pendingCard, setupPersona, setupRadiusKm]);
+  }, [candidate, pendingCard, reportTitle, setupPersona, setupRadiusKm]);
 
   const generateCommittedReport = useCallback(async () => {
     const selected = lastPointRef.current;
@@ -544,6 +547,7 @@ export default function App() {
         lat: selected.lat,
         radiusKm: analysisRadiusKm,
         placeLabel: placeLabel ?? `${selected.lat.toFixed(5)}, ${selected.lon.toFixed(5)}`,
+        reportTitle,
         signal: controller.signal,
       });
       if (!controller.signal.aborted) setCommittedPdfStatus("downloaded");
@@ -554,19 +558,71 @@ export default function App() {
     } finally {
       if (pdfAbortRef.current === controller) pdfAbortRef.current = null;
     }
-  }, [analysisRadiusKm, card, persona, placeLabel]);
+  }, [analysisRadiusKm, card, persona, placeLabel, reportTitle]);
 
-  const changeAnalysisRadius = (radiusKm: number) => {
-    analysisAbortRef.current?.abort();
-    analysisRequestRef.current += 1;
-    setUpdatingMessage(null);
-    setAnalysisRadiusKm(radiusKm);
-    saveAnalysisRadius(radiusKm);
+  const shareCommittedReport = useCallback(async () => {
+    const selected = lastPointRef.current;
+    if (!selected || !card) return;
+    pdfAbortRef.current?.abort();
+    const controller = new AbortController();
+    pdfAbortRef.current = controller;
+    setShareGenerating(true);
+    setShareNotice(null);
+    setCommittedPdfError(null);
+    try {
+      const { buildLocationReport, downloadLocationReport } = await import("./lib/reportPdf");
+      const committedPersona = (
+        ["home_buyer", "tenant", "investor", "developer"] as string[]
+      ).includes(card.persona?.key ?? "")
+        ? (card.persona?.key as PersonaKey)
+        : persona;
+      const generated = await buildLocationReport({
+        card,
+        persona: committedPersona,
+        lon: selected.lon,
+        lat: selected.lat,
+        radiusKm: analysisRadiusKm,
+        placeLabel: placeLabel ?? `${selected.lat.toFixed(5)}, ${selected.lon.toFixed(5)}`,
+        reportTitle,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      const file = new File([generated.blob], generated.filename, { type: "application/pdf" });
+      const shareData: ShareData = {
+        files: [file],
+        title: reportTitle,
+        text: `PropInsight location report: ${reportTitle}`,
+      };
+      const canShareFile = typeof navigator.share === "function" &&
+        (typeof navigator.canShare !== "function" || navigator.canShare(shareData));
+      if (canShareFile) {
+        try {
+          await navigator.share(shareData);
+          setShareNotice("Report shared successfully.");
+          return;
+        } catch (error) {
+          if ((error as Error).name === "AbortError") return;
+        }
+      }
+      downloadLocationReport(generated);
+      setShareNotice("Native sharing is unavailable, so the PDF was downloaded instead.");
+    } catch (error) {
+      if ((error as Error).name === "AbortError") return;
+      setCommittedPdfError((error as Error).message || "The report could not be prepared for sharing.");
+    } finally {
+      if (pdfAbortRef.current === controller) pdfAbortRef.current = null;
+      setShareGenerating(false);
+    }
+  }, [analysisRadiusKm, card, persona, placeLabel, reportTitle]);
+
+  const changeReportTitle = (title: string) => {
+    setReportTitle(title.slice(0, 80));
+    setShareNotice(null);
   };
 
   const editCurrentAnalysis = () => {
     const last = lastPointRef.current;
-    if (last) beginAnalysisSetup(last.lon, last.lat, last.label);
+    if (last) beginAnalysisSetup(last.lon, last.lat, last.label, true);
   };
 
   useEffect(() => {
@@ -581,7 +637,6 @@ export default function App() {
         persona,
         analysisRadiusKm,
         true,
-        `Updating results for ${analysisRadiusKm} km…`,
       );
     }, 600);
     return () => window.clearTimeout(timeout);
@@ -601,12 +656,6 @@ export default function App() {
       zoom: 11,
     });
     mapRef.current = map;
-
-    // Keep zoom clear of left-side layers / basemap chrome.
-    map.addControl(
-      new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
-      "top-right",
-    );
 
     const syncAutomatic3D = () => {
       const zoom = map.getZoom();
@@ -857,6 +906,15 @@ export default function App() {
       element.type = "button";
       element.title = `${poi.name} · ${(poi.distance_m / 1000).toFixed(1)} km away`;
       element.setAttribute("aria-label", element.title);
+      element.dataset.poiKey = `${poi.category}|${poi.name}|${poi.lon.toFixed(6)}|${poi.lat.toFixed(6)}`;
+      const isSelected = selectedPoi != null &&
+        selectedPoi.category === poi.category &&
+        selectedPoi.name === poi.name &&
+        selectedPoi.lon != null &&
+        selectedPoi.lat != null &&
+        Math.abs(selectedPoi.lon - poi.lon) < 0.000001 &&
+        Math.abs(selectedPoi.lat - poi.lat) < 0.000001;
+      if (isSelected) element.classList.add("poi-marker-selected");
       Object.assign(element.style, {
         width: "26px",
         height: "26px",
@@ -883,6 +941,7 @@ export default function App() {
         .setLngLat([poi.lon, poi.lat])
         .setPopup(new maplibregl.Popup({ offset: 12 }).setDOMContent(popupContent))
         .addTo(map);
+      if (isSelected) marker.togglePopup();
       poiMarkersRef.current.push(marker);
     }
     resizePoiMarkers(map, poiMarkersRef.current);
@@ -891,7 +950,7 @@ export default function App() {
       poiMarkersRef.current.forEach((marker) => marker.remove());
       poiMarkersRef.current = [];
     };
-  }, [card, layers, layerEnabled]);
+  }, [card, layers, layerEnabled, selectedPoi]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -968,7 +1027,6 @@ export default function App() {
     legendCountsAreCurrent && typeof securityCountValue === "number"
       ? securityCountValue
       : undefined;
-  const anyAmenityLayerEnabled = AMENITY_LAYER_IDS.some((id) => layerEnabled(id));
   const professionalReport = persona === "investor" || persona === "developer";
   const committedPoint = lastPointRef.current;
   const reportGuidePersona = (["home_buyer", "tenant", "investor", "developer"] as string[]).includes(
@@ -992,6 +1050,7 @@ export default function App() {
 
   const focusNearby = (item: NearbyPoiItem) => {
     if (item.lon == null || item.lat == null) return;
+    setSelectedPoi(item);
     mapRef.current?.flyTo({
       center: [item.lon, item.lat],
       zoom: Math.max(mapRef.current.getZoom(), 15),
@@ -1014,6 +1073,10 @@ export default function App() {
     setPdfError(null);
     setCommittedPdfStatus("idle");
     setCommittedPdfError(null);
+    setReportTitle("Untitled 1");
+    reportTitleBeforeSetupRef.current = "Untitled 1";
+    setShareGenerating(false);
+    setShareNotice(null);
     markerRef.current?.remove();
     markerRef.current = null;
     candidateMarkerRef.current?.remove();
@@ -1026,10 +1089,10 @@ export default function App() {
     setCard(null);
     setPlaceLabel(null);
     setLoading(false);
-    setUpdatingMessage(null);
     setError(null);
     setAmenitiesListOpen(false);
     setAmenitiesListCategory(null);
+    setSelectedPoi(null);
     setReportGuideOpen(false);
     setProfessional3DOpen(false);
     setSearchResetKey((key) => key + 1);
@@ -1058,16 +1121,26 @@ export default function App() {
       <AppHeader
         theme={theme}
         onToggleTheme={toggleTheme}
-        onSelectPlace={beginAnalysisSetup}
-        locating={loading}
-        persona={persona}
-        onPersonaChange={onPersonaChange}
-        searchResetKey={searchResetKey}
+        reportTitle={reportTitle}
+        onReportTitleChange={changeReportTitle}
         reportGuideAvailable={Boolean(card)}
         onOpenReportGuide={() => setReportGuideOpen(true)}
         reportAvailable={Boolean(card && committedPoint && !candidate)}
         reportGenerating={committedPdfStatus === "generating"}
+        shareGenerating={shareGenerating}
         onGenerateReport={() => void generateCommittedReport()}
+        onShareReport={() => void shareCommittedReport()}
+        mobileToolbar={
+          <MapSearchToolbar
+            compact
+            theme={theme}
+            persona={persona}
+            onPersonaChange={onPersonaChange}
+            onSelectPlace={beginAnalysisSetup}
+            resetKey={searchResetKey}
+            locating={loading}
+          />
+        }
       />
 
       {committedPdfError && (
@@ -1075,24 +1148,26 @@ export default function App() {
           Report export failed: {committedPdfError}
         </div>
       )}
+      {shareNotice && (
+        <div className="absolute right-4 top-20 z-50 max-w-sm rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800 shadow-lg">
+          {shareNotice}
+        </div>
+      )}
 
       <div className="relative flex min-h-0 flex-1 flex-row">
         {desktopReportOpen && (
-          <div className="hidden h-full w-[22rem] shrink-0 lg:block xl:w-96">
+          <div className="hidden h-full w-[27rem] shrink-0 lg:block xl:w-[28rem]">
             <ScorecardConsole
               theme={theme}
               card={card}
               loading={loading}
               error={error}
               placeLabel={placeLabel}
+              coordinates={committedPoint}
               persona={persona}
               onClose={() => setDesktopReportOpen(false)}
               onReset={resetLocationAnalysis}
               onViewNearbyList={openAmenitiesList}
-              radiusKm={analysisRadiusKm}
-              radiusControlIdPrefix="desktop-scorecard"
-              updatingMessage={updatingMessage}
-              onRadiusChange={changeAnalysisRadius}
               onEditAnalysis={editCurrentAnalysis}
               onOpenProfessional3D={
                 professionalReport && committedPoint
@@ -1106,7 +1181,20 @@ export default function App() {
         <main className="relative h-full min-h-0 min-w-0 flex-1">
           <div ref={mapContainer} className="h-full w-full bg-slate-200" />
 
-          {/* Flood Watch MapPanel layout: Legend bottom-left · Home+Basemap+Layers under zoom */}
+          <div className="pointer-events-none absolute left-1/2 top-5 z-20 hidden -translate-x-1/2 lg:flex">
+            <div className="pointer-events-auto">
+              <MapSearchToolbar
+                theme={theme}
+                persona={persona}
+                onPersonaChange={onPersonaChange}
+                onSelectPlace={beginAnalysisSetup}
+                resetKey={searchResetKey}
+                locating={loading}
+              />
+            </div>
+          </div>
+
+          {/* Map controls follow the reference rail: orientation, home, layers, basemap, 3D. */}
           <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100vw-5.5rem)] space-y-2 sm:max-w-none">
             {!desktopReportOpen && (
               <div className="pointer-events-auto hidden lg:block">
@@ -1125,25 +1213,62 @@ export default function App() {
                 </button>
               </div>
             )}
-            {nearbyAmenities.length > 0 && anyAmenityLayerEnabled && (
-              <div className="pointer-events-auto">
-                <button
-                  type="button"
-                  onClick={() => openAmenitiesList()}
-                  className={clsx(
-                    "inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-semibold shadow-lg",
-                    dark
-                      ? "border-gray-700 bg-gray-900 text-sky-300 hover:bg-gray-800"
-                      : "border-slate-200 bg-white text-sky-800 hover:border-slate-300",
-                  )}
-                >
-                  View amenities · {nearbyAmenityTotal}
-                </button>
-              </div>
-            )}
           </div>
 
-          <div className="pointer-events-none absolute top-[7rem] right-3 z-10 flex flex-col gap-2">
+          <div className="pointer-events-none absolute right-3 top-3 z-10 flex flex-col gap-1 lg:bottom-10 lg:top-auto lg:gap-2">
+            <div
+              className={clsx(
+                "glass-tool liquid-tool-yellow pointer-events-auto overflow-hidden rounded-xl border",
+                dark ? "border-amber-900/70 bg-amber-950/60" : "border-amber-100/80 bg-amber-50/60",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  const map = mapRef.current;
+                  if (map) map.easeTo({ zoom: Math.min(map.getMaxZoom(), map.getZoom() + 1), duration: 250 });
+                }}
+                className={clsx(
+                  "map-rail-control flex h-10 w-10 items-center justify-center text-2xl font-medium leading-none transition",
+                  dark ? "text-amber-100 hover:bg-amber-900/70" : "text-slate-800 hover:bg-amber-100",
+                )}
+                aria-label="Zoom in"
+                title="Zoom in"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const map = mapRef.current;
+                  if (map) map.easeTo({ zoom: Math.max(map.getMinZoom(), map.getZoom() - 1), duration: 250 });
+                }}
+                className={clsx(
+                  "map-rail-control flex h-10 w-10 items-center justify-center border-t text-2xl font-medium leading-none transition",
+                  dark
+                    ? "border-amber-900/70 text-amber-100 hover:bg-amber-900/70"
+                    : "border-amber-200 text-slate-800 hover:bg-amber-100",
+                )}
+                aria-label="Zoom out"
+                title="Zoom out"
+              >
+                −
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => mapRef.current?.easeTo({ bearing: 0, pitch: 0, duration: 500 })}
+              className={clsx(
+                "glass-tool liquid-tool-rose map-rail-control pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border transition",
+                dark
+                  ? "border-rose-900/70 bg-rose-950/60 text-rose-200 hover:border-rose-700 hover:bg-rose-950/80"
+                  : "border-rose-100/80 bg-rose-50/60 text-slate-500 hover:border-rose-300 hover:bg-rose-100/80",
+              )}
+              aria-label="Reset map orientation"
+              title="Reset orientation"
+            >
+              <IconCompass size={18} />
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -1158,27 +1283,16 @@ export default function App() {
                 });
               }}
               className={clsx(
-                "pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border shadow-lg transition",
+                "glass-tool liquid-tool-yellow map-rail-control pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border transition",
                 dark
-                  ? "border-gray-700 bg-gray-900 text-gray-200 hover:border-gray-500 hover:bg-gray-800 hover:text-white"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900",
+                  ? "border-amber-900/70 bg-amber-950/60 text-amber-300 hover:border-amber-700 hover:bg-amber-950/80"
+                  : "border-amber-100/80 bg-amber-50/60 text-amber-700 hover:border-amber-300 hover:bg-amber-100/80",
               )}
-              style={
-                dark
-                  ? { backgroundColor: "#111827", borderColor: "#374151" }
-                  : { backgroundColor: "#ffffff", borderColor: "#cbd5e1" }
-              }
               aria-label="Reset map to FCT"
               title="Home"
             >
               <IconHome size={15} />
             </button>
-            <div className="pointer-events-auto">
-              <Map3DControl theme={theme} enabled={view3D} onToggle={toggle3D} />
-            </div>
-            <div className="pointer-events-auto">
-              <BasemapSwitcher theme={theme} activeId={basemapId} onChange={setBasemapId} />
-            </div>
             <div className="pointer-events-auto">
               <LayersPanel
                 theme={theme}
@@ -1186,6 +1300,12 @@ export default function App() {
                 onToggle={toggleLayer}
                 radiusKm={displayRadiusKm}
               />
+            </div>
+            <div className="pointer-events-auto">
+              <BasemapSwitcher theme={theme} activeId={basemapId} onChange={setBasemapId} />
+            </div>
+            <div className="pointer-events-auto">
+              <Map3DControl theme={theme} enabled={view3D} onToggle={toggle3D} />
             </div>
           </div>
 
@@ -1218,7 +1338,7 @@ export default function App() {
 
         <div
           className={clsx(
-            "absolute inset-x-0 bottom-0 z-10 max-h-[min(48vh,26rem)] overflow-hidden rounded-t-2xl border shadow-lg transition-transform duration-300 lg:hidden",
+            "glass-surface absolute inset-x-0 bottom-0 z-10 max-h-[min(48vh,26rem)] overflow-hidden rounded-t-3xl border transition-transform duration-300 lg:hidden",
             dark ? "border-gray-800" : "border-slate-200",
             sheetOpen ? "translate-y-0" : "translate-y-[calc(100%-2.75rem)]",
           )}
@@ -1241,14 +1361,11 @@ export default function App() {
               loading={loading}
               error={error}
               placeLabel={placeLabel}
+              coordinates={committedPoint}
               persona={persona}
               onClose={() => setSheetOpen(false)}
               onReset={resetLocationAnalysis}
               onViewNearbyList={openAmenitiesList}
-              radiusKm={analysisRadiusKm}
-              radiusControlIdPrefix="mobile-scorecard"
-              updatingMessage={updatingMessage}
-              onRadiusChange={changeAnalysisRadius}
               onEditAnalysis={editCurrentAnalysis}
               onOpenProfessional3D={
                 professionalReport && committedPoint
@@ -1289,7 +1406,6 @@ export default function App() {
         onRetry={() => void analyseCandidate()}
         onGenerateReport={() => void generatePendingReport()}
         onViewMap={viewCandidateOnMap}
-        onViewNearbyList={openAmenitiesList}
       />
 
       {card && (
@@ -1317,14 +1433,6 @@ export default function App() {
         />
       )}
 
-      <footer
-        className={clsx(
-          "shrink-0 border-t px-4 py-1.5 text-center text-[10px]",
-          dark ? "border-gray-800 text-gray-500" : "border-slate-200 text-slate-400",
-        )}
-      >
-        Advisory property intelligence — not a legal or engineering sign-off · Geoinfotech / GGIS
-      </footer>
     </div>
   );
 }

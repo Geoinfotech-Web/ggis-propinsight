@@ -53,10 +53,10 @@ export function PersonaSelect({ theme, persona, onPersonaChange, className }: Pr
         aria-controls={listId}
         title={current.blurb}
         className={clsx(
-          "inline-flex h-10 items-center gap-1.5 rounded-xl border px-2.5 shadow-sm transition",
+          "glass-tool liquid-tool-ivory inline-flex h-10 items-center gap-1.5 rounded-xl border px-2.5 transition",
           dark
-            ? "border-gray-700 bg-gray-900 text-gray-100 hover:bg-gray-800"
-            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+            ? "border-gray-700 bg-gray-900/75 text-gray-100 hover:bg-gray-800/85"
+            : "border-white/70 bg-white/75 text-slate-700 hover:border-slate-300",
         )}
       >
         <span
@@ -83,7 +83,7 @@ export function PersonaSelect({ theme, persona, onPersonaChange, className }: Pr
           role="listbox"
           aria-label="Target user"
           className={clsx(
-            "absolute left-0 top-full z-30 mt-1.5 w-64 overflow-hidden rounded-xl border shadow-lg",
+            "glass-surface absolute left-0 top-full z-30 mt-1.5 w-64 overflow-hidden rounded-2xl border",
             dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white",
           )}
         >

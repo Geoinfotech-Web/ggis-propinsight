@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import clsx from "clsx";
 import { DOMAIN_ORDER, type DomainResult, type Scorecard } from "../api";
 import { getPersona, type PersonaKey } from "../lib/personas";
 import type { Theme } from "../theme";
-import { RadiusControl } from "./RadiusControl";
-import { IconCube3D, IconEdit } from "./Icons";
+import { IconCopy, IconCube3D, IconMore, IconPin, IconX } from "./Icons";
+import { ScoreRing } from "./ScoreRing";
 
 const DOMAIN_LABELS: Record<(typeof DOMAIN_ORDER)[number], string> = {
   flood: "Flood hazard",
@@ -435,7 +435,7 @@ function DetailGroup({
   dark: boolean;
 }) {
   return (
-    <section className={clsx("rounded-lg border p-3", dark ? "border-gray-700 bg-gray-950/60" : "border-slate-200 bg-slate-50") }>
+    <section className={clsx("bento-card rounded-2xl border p-3", dark ? "border-gray-700 bg-gray-950/60" : "border-slate-200 bg-slate-50") }>
       <p className={clsx("text-[10px] font-semibold uppercase tracking-widest", dark ? "text-sky-300" : "text-sky-800")}>{title}</p>
       <p className={clsx("mt-1 text-[10px] leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>{description}</p>
       <dl className="mt-2 space-y-0">
@@ -621,7 +621,7 @@ function DevelopmentOutlookCard({
   const settlement = outlook.settlement;
   const pressure = outlook.migration_pressure;
   return (
-    <section className={clsx("overflow-hidden rounded-xl border", dark ? "border-amber-900/60" : "border-amber-200") }>
+    <section className={clsx("bento-card overflow-hidden rounded-2xl border", dark ? "border-amber-900/60" : "border-amber-200") }>
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-start justify-between gap-3 px-3 py-3 text-left">
         <div>
           <p className={clsx("text-[10px] font-semibold uppercase tracking-[0.14em]", dark ? "text-amber-300" : "text-amber-700")}>Professional context · {outlook.radius_m / 1000} km</p>
@@ -655,7 +655,7 @@ function DevelopmentOutlookCard({
               ["Confidence", pressure?.confidence ?? "Low"],
             ]}
           />
-          <section className={clsx("rounded-lg border p-2.5", dark ? "border-gray-800 bg-gray-950/40" : "border-slate-100 bg-slate-50") }>
+    <section className={clsx("bento-card rounded-2xl border p-2.5", dark ? "border-gray-800 bg-gray-950/40" : "border-slate-100 bg-slate-50") }>
           <p className={clsx("text-[10px] font-semibold uppercase tracking-widest", dark ? "text-amber-300" : "text-amber-700")}>Verified public projects · {outlook.projects.total_count ?? outlook.projects.returned_count ?? 0}</p>
             <p className={clsx("mt-1 text-[10px] leading-relaxed", dark ? "text-gray-500" : "text-slate-500")}>{outlook.projects.advisory}</p>
             {projects.length ? (
@@ -682,17 +682,13 @@ type Props = {
   loading: boolean;
   error: string | null;
   placeLabel?: string | null;
+  coordinates?: { lon: number; lat: number } | null;
   persona?: PersonaKey;
   onClose?: () => void;
   onReset?: () => void;
   onViewNearbyList?: (category?: string) => void;
-  radiusKm?: number;
-  radiusControlIdPrefix?: string;
-  updatingMessage?: string | null;
-  onRadiusChange?: (radiusKm: number) => void;
   onEditAnalysis?: () => void;
   onOpenProfessional3D?: () => void;
-  preview?: boolean;
 };
 
 function domainLabel(key: string): string {
@@ -703,32 +699,30 @@ function domainKicker(key: string): string {
   return DOMAIN_KICKERS[key as (typeof DOMAIN_ORDER)[number]] ?? "Location intelligence";
 }
 
+function fitRating(score: number | null | undefined): { label: string; color: string } {
+  if (score == null) return { label: "Unavailable", color: "#94a3b8" };
+  if (score >= 70) return { label: "Strong", color: "#10b981" };
+  if (score >= 40) return { label: "Moderate", color: "#d97706" };
+  return { label: "Weak", color: "#ef4444" };
+}
+
 export function ScorecardConsole({
   theme,
   card,
   loading,
   error,
   placeLabel,
+  coordinates,
   persona = "home_buyer",
   onClose,
   onReset,
   onViewNearbyList,
-  radiusKm = 5,
-  radiusControlIdPrefix = "scorecard",
-  updatingMessage,
-  onRadiusChange,
   onEditAnalysis,
   onOpenProfessional3D,
-  preview = false,
 }: Props) {
   const dark = theme === "dark";
   const personaDef = getPersona(persona);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [analysisEditorOpen, setAnalysisEditorOpen] = useState(false);
-
-  useEffect(() => {
-    setAnalysisEditorOpen(false);
-  }, [card?.location.geohash8]);
 
   const toggle = (id: string) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -755,45 +749,57 @@ export function ScorecardConsole({
   const cautionHighlights = overviewHighlights.filter(
     (highlight) => highlight.tone !== "positive",
   );
+  const fit = fitRating(card?.fit_score);
+  const copyLocation = () => {
+    const text = coordinates
+      ? `${coordinates.lat.toFixed(5)}, ${coordinates.lon.toFixed(5)}`
+      : placeLabel;
+    if (text) void navigator.clipboard?.writeText(text);
+  };
 
   return (
     <aside
       className={clsx(
-        "flex h-full w-full flex-col",
-        preview ? "overflow-hidden rounded-2xl border" : "border-r",
-        dark ? "border-gray-800 bg-gray-900/95 text-gray-100" : "border-slate-200 bg-white/95 text-slate-900",
+        "flex h-full w-full flex-col border-r",
+        dark ? "border-gray-800 bg-gray-950/80 text-gray-100 backdrop-blur-2xl" : "border-slate-200 bg-slate-50/75 text-slate-900 backdrop-blur-2xl",
       )}
     >
       <div
         className={clsx(
-          "flex items-start justify-between gap-3 border-b px-5 py-4",
-          dark ? "border-gray-800" : "border-slate-200",
+          "bento-card m-3 mb-0 flex items-start justify-between gap-3 rounded-2xl border p-5",
+          dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white",
         )}
       >
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="app-kicker">Location report</p>
           <h2 className="font-display text-xl font-semibold tracking-tight">Scorecard</h2>
           <p className={clsx("mt-0.5 text-[11px] leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
             {card?.persona?.blurb ?? personaDef.blurb}
           </p>
+          {card && (
+            <>
+              <div className={clsx("mt-4 border-t pt-3", dark ? "border-gray-800" : "border-slate-200")}>
+                <button type="button" onClick={copyLocation} className="inline-flex max-w-full items-center gap-2 text-left" title="Copy coordinates">
+                  <IconPin size={14} className="shrink-0 text-amber-600" />
+                  <span className="truncate text-sm font-bold tabular-nums text-amber-600">
+                    {coordinates ? `${coordinates.lat.toFixed(5)}, ${coordinates.lon.toFixed(5)}` : placeLabel}
+                  </span>
+                  <IconCopy size={13} className={dark ? "text-gray-500" : "text-slate-400"} />
+                </button>
+                {(card.location.ward || card.location.area_council) && (
+                  <p className={clsx("mt-1 truncate text-xs", dark ? "text-gray-400" : "text-slate-500")}>
+                    {[card.location.ward && `${card.location.ward} ward`, card.location.area_council].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {onReset && <button type="button" onClick={onReset} className={clsx("rounded-xl px-3 py-1.5 text-xs font-semibold", dark ? "bg-gray-800 text-gray-200" : "bg-slate-100 text-slate-700")}>Reset</button>}
+                {onEditAnalysis && <button type="button" onClick={onEditAnalysis} className={clsx("rounded-xl px-3 py-1.5 text-xs font-semibold", dark ? "bg-gray-800 text-gray-200" : "bg-slate-100 text-slate-700")}>Edit analysis</button>}
+              </div>
+            </>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {onReset && (card || loading || error || placeLabel) && (
-            <button
-              type="button"
-              onClick={onReset}
-              aria-label="Reset location analysis"
-              title="Clear the selected location and reset the map"
-              className={clsx(
-                "rounded-lg border px-2 py-1 text-xs font-semibold transition",
-                dark
-                  ? "border-sky-800 text-sky-300 hover:bg-sky-950/70 hover:text-sky-200"
-                  : "border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-900",
-              )}
-            >
-              Reset
-            </button>
-          )}
           {onClose && (
             <button
               type="button"
@@ -801,19 +807,19 @@ export function ScorecardConsole({
               aria-label="Close location report"
               title="Close report"
               className={clsx(
-                "rounded-lg border px-2 py-1 text-xs font-semibold transition",
+                "inline-flex h-9 w-9 items-center justify-center rounded-full border transition",
                 dark
                   ? "border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
                   : "border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900",
               )}
             >
-              Close
+              <IconX size={16} />
             </button>
           )}
         </div>
       </div>
 
-      <div className="scorecard-scroll flex-1 overflow-y-auto px-5 py-4">
+      <div className="scorecard-scroll flex-1 overflow-y-auto px-3 py-3">
         {!card && !loading && !error && (
           <p className={clsx("text-sm leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
             Search a place, use your current location, or click the map to generate a Location
@@ -832,23 +838,58 @@ export function ScorecardConsole({
 
         {card && (
           <div className="space-y-4">
-            {!preview && <div className="flex flex-wrap gap-2">
+            <section className={clsx("bento-card overflow-hidden rounded-2xl border", dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white")}>
               <button
                 type="button"
-                onClick={() => setAnalysisEditorOpen((open) => !open)}
-                className={clsx(
-                  "inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold shadow-sm transition",
-                  dark
-                    ? "border-gray-700 bg-gray-950/50 text-gray-100 hover:border-sky-700"
-                    : "border-slate-200 bg-white text-slate-800 hover:border-sky-300",
-                )}
-                aria-expanded={analysisEditorOpen}
-                aria-controls={`${radiusControlIdPrefix}-analysis-editor`}
+                onClick={() => toggle("fit_overview")}
+                aria-expanded={expanded.fit_overview ?? false}
+                className="relative flex w-full items-center gap-5 p-5 text-left"
               >
-                <IconEdit size={14} className={dark ? "text-sky-300" : "text-sky-700"} />
-                Edit analysis
+                <IconMore size={17} className={clsx("absolute right-4 top-4", dark ? "text-gray-600" : "text-slate-300")} />
+                <ScoreRing score={card.fit_score ?? null} size="lg" color={fit.color} label={`Fit for ${personaLabel}`} />
+                <div className="min-w-0 flex-1">
+                  <p className={clsx("text-[11px] font-semibold uppercase tracking-wide", dark ? "text-gray-400" : "text-slate-500")}>Fit for {personaLabel}</p>
+                  <p className="font-display text-3xl font-bold tabular-nums">{card.fit_score != null ? Math.round(card.fit_score) : "—"} / 100</p>
+                  <span className={clsx(
+                    "mt-2 inline-flex rounded-lg px-3 py-1 text-[11px] font-bold uppercase",
+                    fit.label === "Strong" ? "bg-emerald-100 text-emerald-700" : fit.label === "Moderate" ? "bg-amber-100 text-amber-700" : fit.label === "Weak" ? "bg-red-100 text-red-700" : "bg-slate-200 text-slate-600",
+                  )}>{fit.label}</span>
+                </div>
               </button>
-              {showPlanningContext && onOpenProfessional3D && (
+              {(expanded.fit_overview ?? false) && (
+                <div className={clsx("border-t px-5 py-4 text-xs leading-relaxed", dark ? "border-gray-800 text-gray-400" : "border-slate-100 text-slate-500")}>
+                  The fit score combines the report domains using the priorities for {personaLabel}. Open any domain card below to review its supporting evidence.
+                </div>
+              )}
+            </section>
+
+            {card.summary && (
+              <section className={clsx("bento-card overflow-hidden rounded-2xl border", dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white")}>
+                <button
+                  type="button"
+                  onClick={() => toggle("summary_overview")}
+                  aria-expanded={expanded.summary_overview ?? false}
+                  className="relative w-full p-5 text-left"
+                >
+                  <IconMore size={16} className={clsx("absolute right-4 top-4", dark ? "text-gray-600" : "text-slate-300")} />
+                  <p className={clsx("pr-6 text-[11px] font-semibold uppercase tracking-wide", dark ? "text-gray-400" : "text-slate-500")}>What this means for you</p>
+                  <p className="mt-4 text-sm font-semibold leading-relaxed">{card.summary}</p>
+                  {(expanded.summary_overview ?? false) && overviewHighlights.length > 0 && (
+                    <div className="mt-4 space-y-3">
+                      {overviewHighlights.map((highlight) => (
+                        <div key={highlight.domain} className="flex gap-3 text-xs leading-relaxed">
+                          <span className={clsx("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", highlight.tone === "positive" ? "bg-emerald-500" : highlight.tone === "caution" ? "bg-amber-500" : "bg-sky-500")} />
+                          <p><span className="font-bold">{highlight.title}:</span> <span className={dark ? "text-gray-400" : "text-slate-500"}>{highlight.text}</span></p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              </section>
+            )}
+
+            {showPlanningContext && onOpenProfessional3D && (
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={onOpenProfessional3D}
@@ -862,60 +903,11 @@ export function ScorecardConsole({
                   <IconCube3D size={15} />
                   3D site view
                 </button>
-              )}
-            </div>}
-            {!preview && analysisEditorOpen && (
-              <section
-                id={`${radiusControlIdPrefix}-analysis-editor`}
-                className={clsx(
-                  "rounded-xl border px-3 py-3",
-                  dark ? "border-sky-900/70 bg-sky-950/20" : "border-sky-200 bg-sky-50/60",
-                )}
-                aria-label="Edit analysis settings"
-              >
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold">{personaLabel} · {radiusKm} km</p>
-                  {onEditAnalysis && (
-                    <button
-                      type="button"
-                      onClick={onEditAnalysis}
-                      className={clsx(
-                        "rounded-lg border px-2 py-1 text-[10px] font-semibold",
-                        dark
-                          ? "border-gray-700 text-gray-300 hover:bg-gray-800"
-                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
-                      )}
-                    >
-                      Change audience
-                    </button>
-                  )}
-                </div>
-                {onRadiusChange && (
-                  <RadiusControl
-                    theme={theme}
-                    value={radiusKm}
-                    onChange={onRadiusChange}
-                    idPrefix={radiusControlIdPrefix}
-                    compact
-                  />
-                )}
-                {updatingMessage && (
-                  <p
-                    className={clsx(
-                      "mt-2 flex items-center gap-2 text-[11px] font-medium",
-                      dark ? "text-sky-300" : "text-sky-700",
-                    )}
-                    role="status"
-                  >
-                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600" />
-                    {updatingMessage}
-                  </p>
-                )}
-              </section>
+              </div>
             )}
             <div
               className={clsx(
-                "rounded-lg border px-3 py-2 text-[11px]",
+                "hidden rounded-lg border px-3 py-2 text-[11px]",
                 dark ? "border-gray-800 bg-gray-950/60 text-gray-400" : "border-slate-200 bg-slate-50 text-slate-500",
               )}
             >
@@ -1117,14 +1109,16 @@ export function ScorecardConsole({
               )}
             </div>
 
-            <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
               {!isConsumerReport && (
-                <DevelopmentOutlookCard
-                  card={card}
-                  dark={dark}
-                  open={expanded.development_outlook ?? false}
-                  onToggle={() => toggle("development_outlook")}
-                />
+                <div className="col-span-2">
+                  <DevelopmentOutlookCard
+                    card={card}
+                    dark={dark}
+                    open={expanded.development_outlook ?? false}
+                    onToggle={() => toggle("development_outlook")}
+                  />
+                </div>
               )}
               {orderedDomains.map((d) => {
                 const r = card.domains[d];
@@ -1134,22 +1128,36 @@ export function ScorecardConsole({
                 const rows = evidenceRows(d, r.evidence ?? {});
                 const bar = isFlood ? floodHazardColor(r) : scoreBarColor(r.score, r.status);
                 const highPriority = topDomains.has(d);
+                const compactDomain = orderedDomains.indexOf(d) < 2 && !isOpen;
 
                 return (
                   <section
                     key={d}
                     className={clsx(
-                      "overflow-hidden rounded-xl border",
-                      dark ? "border-gray-800" : "border-slate-200",
+                      "bento-card overflow-hidden rounded-2xl border",
+                      compactDomain ? "col-span-1" : "col-span-2",
+                      dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white",
                     )}
                   >
                     <button
                       type="button"
                       onClick={() => toggle(d)}
-                      className="flex w-full items-start gap-3 px-3 py-3 text-left"
+                      className={clsx(
+                        "relative flex w-full gap-3 px-3 py-3",
+                        compactDomain ? "flex-col items-center text-center" : "items-start text-left",
+                      )}
                       aria-expanded={isOpen}
                     >
-                      <div className="min-w-0 flex-1">
+                      <IconMore
+                        size={15}
+                        className={clsx(
+                          "pointer-events-none absolute right-2.5 top-2.5",
+                          dark ? "text-gray-600" : "text-slate-300",
+                          !compactDomain && "hidden",
+                        )}
+                      />
+                      {compactDomain && <ScoreRing score={r.score} size="sm" color={bar} label={domainLabel(d)} />}
+                      <div className={clsx("min-w-0 flex-1", compactDomain && "w-full")}>
                         <p
                           className={clsx(
                             "text-[10px] font-semibold uppercase tracking-[0.14em]",
@@ -1158,7 +1166,7 @@ export function ScorecardConsole({
                         >
                           {domainKicker(d)}
                         </p>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                        <div className={clsx("mt-0.5 flex flex-wrap items-center gap-2", compactDomain && "justify-center")}>
                           <h3 className="font-display text-base font-semibold tracking-tight">
                             {domainLabel(d)}
                           </h3>
@@ -1190,7 +1198,7 @@ export function ScorecardConsole({
                               Limited data
                             </span>
                           )}
-                          {highPriority && (
+                          {highPriority && !compactDomain && (
                             <span
                               className={clsx(
                                 "rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
@@ -1203,7 +1211,7 @@ export function ScorecardConsole({
                             </span>
                           )}
                         </div>
-                        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-gray-800">
+                        <div className={clsx("mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-gray-800", compactDomain && "hidden")}>
                           <div
                             className="h-full rounded-full transition-all"
                             style={{
@@ -1212,7 +1220,7 @@ export function ScorecardConsole({
                             }}
                           />
                         </div>
-                        {isFlood && (
+                        {isFlood && !compactDomain && (
                           <div
                             className={clsx(
                               "mt-1 flex justify-between text-[9px] font-medium",
@@ -1224,7 +1232,7 @@ export function ScorecardConsole({
                           </div>
                         )}
                       </div>
-                      <div className="shrink-0 text-right">
+                      <div className={clsx("shrink-0 text-right", compactDomain && "hidden")}>
                         <p className="font-display text-2xl font-semibold tabular-nums leading-none">
                           {r.score !== null ? r.score.toFixed(0) : isFlood ? "N/P" : "—"}
                         </p>
@@ -1410,6 +1418,9 @@ export function ScorecardConsole({
                   .join(" · ")}
               </footer>
             )}
+            <p className={clsx("pb-2 text-center text-[10px] leading-relaxed", dark ? "text-gray-600" : "text-slate-400")}>
+              Advisory property intelligence — not a legal or engineering sign-off · Geoinfotech / GGIS
+            </p>
           </div>
         )}
       </div>

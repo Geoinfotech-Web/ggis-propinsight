@@ -119,22 +119,22 @@ export function MapLegend({
   return (
     <div
       className={clsx(
-        "w-[min(22rem,calc(100vw-6rem))] overflow-hidden rounded-lg border shadow-xl",
-        dark ? "border-gray-700/80 bg-gray-900/90 backdrop-blur" : "border-slate-200 bg-white",
+        "glass-surface w-[min(23rem,calc(100vw-6rem))] overflow-hidden rounded-3xl border",
+        dark ? "border-gray-700/80 bg-gray-900/95" : "border-slate-200 bg-white/95",
       )}
     >
       <button
         type="button"
         onClick={() => setCollapsed((c) => !c)}
         className={clsx(
-          "flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left transition",
+          "flex w-full items-center justify-between gap-3 border-b px-5 py-4 text-left transition",
           dark ? "border-gray-800/90 hover:bg-gray-800/40" : "border-slate-200 hover:bg-slate-50",
         )}
         aria-label={collapsed ? "Expand legend" : "Collapse legend"}
       >
         <p
           className={clsx(
-            "text-[10px] font-semibold uppercase tracking-widest",
+            "text-xs font-bold uppercase tracking-wide",
             dark ? "text-gray-500" : "text-slate-500",
           )}
         >
@@ -162,7 +162,7 @@ export function MapLegend({
       </button>
 
       {!collapsed && (
-        <div className="grid grid-cols-2 items-start gap-x-3 gap-y-2 p-3">
+        <div className="grid grid-cols-2 items-start gap-x-5 gap-y-4 p-5">
           {analysisVisible && <div className="col-span-2">
             <p
               className={clsx(

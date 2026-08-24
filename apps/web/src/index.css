@@ -52,11 +52,151 @@ textarea {
   height: 100% !important;
 }
 
+.map-rail-control:focus-visible {
+  outline: 3px solid rgba(14, 165, 233, 0.4);
+  outline-offset: 2px;
+}
+
+.poi-marker-selected {
+  z-index: 2;
+  outline: 3px solid rgba(255, 255, 255, 0.96);
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 7px rgba(14, 165, 233, 0.34),
+    0 10px 26px rgba(2, 132, 199, 0.5) !important;
+  transform: scale(1.28);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
 .maplibregl-popup-content {
   font-family: var(--app-font-sans);
   border-radius: var(--app-radius-md);
   padding: 0.75rem 0.9rem;
-  box-shadow: var(--app-shadow);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+
+.bento-card {
+  border-radius: 1.5rem !important;
+  box-shadow:
+    0 1px 1px rgba(15, 23, 42, 0.03),
+    0 12px 32px rgba(15, 23, 42, 0.06);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.bento-card:hover {
+  box-shadow:
+    0 1px 1px rgba(15, 23, 42, 0.04),
+    0 16px 38px rgba(15, 23, 42, 0.09);
+}
+
+.glass-surface {
+  border-color: rgba(220, 224, 222, 0.86) !important;
+  background:
+    radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.38), transparent 42%),
+    linear-gradient(145deg, rgba(251, 249, 241, 0.54), rgba(255, 254, 249, 0.3)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.42),
+    0 20px 52px rgba(15, 23, 42, 0.14) !important;
+  backdrop-filter: blur(34px) saturate(140%);
+  -webkit-backdrop-filter: blur(34px) saturate(140%);
+}
+
+.view-list-glass {
+  background:
+    radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.32), transparent 42%),
+    linear-gradient(145deg, rgba(251, 249, 241, 0.44), rgba(255, 254, 249, 0.22)) !important;
+  backdrop-filter: blur(36px) saturate(136%);
+  -webkit-backdrop-filter: blur(36px) saturate(136%);
+}
+
+[data-theme="dark"] .view-list-glass {
+  background:
+    radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.1), transparent 42%),
+    linear-gradient(145deg, rgba(22, 31, 42, 0.42), rgba(15, 23, 42, 0.24)) !important;
+}
+
+.glass-dialog {
+  border-color: rgba(255, 255, 255, 0.6) !important;
+  background:
+    radial-gradient(circle at 12% -8%, rgba(255, 255, 255, 0.22), transparent 38%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.08)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.16),
+    0 28px 80px rgba(2, 6, 23, 0.25) !important;
+  backdrop-filter: blur(34px) saturate(118%);
+  -webkit-backdrop-filter: blur(34px) saturate(118%);
+}
+
+.glass-tool {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.28),
+    0 10px 28px rgba(15, 23, 42, 0.12) !important;
+  backdrop-filter: blur(22px) saturate(145%);
+  -webkit-backdrop-filter: blur(22px) saturate(145%);
+}
+
+.liquid-tool-yellow {
+  border-color: rgba(238, 211, 142, 0.9) !important;
+  background: rgba(255, 241, 196, 0.52) !important;
+}
+
+.liquid-tool-rose {
+  border-color: rgba(231, 196, 200, 0.9) !important;
+  background: rgba(247, 224, 226, 0.5) !important;
+}
+
+.liquid-tool-mint {
+  border-color: rgba(211, 229, 204, 0.92) !important;
+  background: rgba(238, 246, 233, 0.5) !important;
+}
+
+.liquid-tool-ivory:not([aria-pressed="true"]) {
+  border-color: rgba(232, 232, 226, 0.9) !important;
+  background: rgba(251, 250, 245, 0.48) !important;
+}
+
+[data-theme="dark"] .glass-surface {
+  border-color: rgba(100, 116, 139, 0.4) !important;
+  background:
+    radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.08), transparent 42%),
+    linear-gradient(145deg, rgba(31, 41, 55, 0.58), rgba(15, 23, 42, 0.42)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 20px 56px rgba(2, 6, 23, 0.44) !important;
+}
+
+[data-theme="dark"] .glass-dialog {
+  border-color: rgba(148, 163, 184, 0.4) !important;
+  background:
+    radial-gradient(circle at 12% -8%, rgba(255, 255, 255, 0.1), transparent 38%),
+    linear-gradient(145deg, rgba(75, 85, 99, 0.76), rgba(31, 41, 55, 0.66)) !important;
+}
+
+[data-theme="dark"] .glass-tool {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 32px rgba(2, 6, 23, 0.34) !important;
+}
+
+[data-theme="dark"] .liquid-tool-yellow,
+[data-theme="dark"] .liquid-tool-rose,
+[data-theme="dark"] .liquid-tool-mint,
+[data-theme="dark"] .liquid-tool-ivory:not([aria-pressed="true"]) {
+  border-color: rgba(100, 116, 139, 0.48) !important;
+  background: rgba(31, 41, 55, 0.48) !important;
+}
+
+[data-theme="dark"] .maplibregl-popup-content {
+  border-color: rgba(100, 116, 139, 0.38);
+  background: rgba(17, 24, 39, 0.82);
+  color: #f8fafc;
 }
 
 .scorecard-scroll::-webkit-scrollbar {
@@ -68,4 +208,53 @@ textarea {
 .scorecard-scroll::-webkit-scrollbar-thumb {
   background: #94a3b8;
   border-radius: 999px;
+}
+
+@keyframes analysis-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.analysis-progress-ring {
+  position: relative;
+  background: conic-gradient(from 0deg, #16e0ae 0deg 235deg, rgba(148, 163, 184, 0.55) 235deg 360deg);
+  animation: analysis-ring-spin 1.25s linear infinite;
+}
+
+.analysis-progress-ring::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: 999px;
+  background: rgba(51, 65, 85, 0.96);
+}
+
+[data-theme="dark"] .analysis-progress-ring::after {
+  background: rgba(17, 24, 39, 0.98);
+}
+
+.analysis-range {
+  appearance: none;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #087df1 0 50%, #dbe3ec 50% 100%);
+}
+
+.analysis-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border: 4px solid #087df1;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.2);
+}
+
+.analysis-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 4px solid #087df1;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.2);
 }
