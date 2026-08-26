@@ -256,6 +256,10 @@ function formatEvidenceValue(key: string, value: unknown): string {
       if (typeof obj.est_minutes === "number") parts.push(`~${obj.est_minutes} min`);
       return parts.join(" · ");
     }
+    // ISP with coverage only (no nearby ISP POI distance).
+    if (key === "isp" && obj.network_coverage) {
+      return typeof obj.connectivity_read === "string" ? obj.connectivity_read : "Coverage checked";
+    }
     if (typeof obj.slope_deg === "number") return `${obj.slope_deg.toFixed(1)}°`;
     if (typeof obj.twi === "number") return `TWI ${obj.twi.toFixed(1)}`;
     if (typeof obj.flood_normalised === "number") return `${(obj.flood_normalised * 100).toFixed(0)} / 100`;
@@ -347,6 +351,58 @@ type MarketListing = {
   source_url?: string;
 };
 
+type NetworkCoverageProvider = {
+  provider: string;
+  generation: string;
+  available: "yes" | "no" | "unknown";
+  quality: string;
+  note?: string;
+};
+
+function parseNetworkCoverage(
+  evidence: Record<string, unknown>,
+): { connectivityRead?: string; providers: NetworkCoverageProvider[] } {
+  const isp =
+    evidence.isp && typeof evidence.isp === "object" && !Array.isArray(evidence.isp)
+      ? (evidence.isp as Record<string, unknown>)
+      : null;
+  const coverage =
+    isp?.network_coverage && typeof isp.network_coverage === "object" && !Array.isArray(isp.network_coverage)
+      ? (isp.network_coverage as Record<string, unknown>)
+      : evidence.network_coverage && typeof evidence.network_coverage === "object" && !Array.isArray(evidence.network_coverage)
+        ? (evidence.network_coverage as Record<string, unknown>)
+        : {};
+  const providers = Array.isArray(coverage.providers) ? coverage.providers : [];
+  return {
+    connectivityRead:
+      typeof isp?.connectivity_read === "string"
+        ? isp.connectivity_read
+        : typeof evidence.connectivity_read === "string"
+          ? evidence.connectivity_read
+          : typeof coverage.connectivity_read === "string"
+            ? coverage.connectivity_read
+            : undefined,
+    providers: providers
+      .map<NetworkCoverageProvider | null>((item) => {
+        if (!item || typeof item !== "object") return null;
+        const row = item as Record<string, unknown>;
+        if (typeof row.provider !== "string" || typeof row.generation !== "string") return null;
+        const available =
+          row.available === "yes" || row.available === "no" || row.available === "unknown"
+            ? row.available
+            : "unknown";
+        return {
+          provider: row.provider,
+          generation: row.generation,
+          available,
+          quality: typeof row.quality === "string" ? row.quality : "unknown",
+          note: typeof row.note === "string" ? row.note : undefined,
+        };
+      })
+      .filter((item): item is NetworkCoverageProvider => item !== null),
+  };
+}
+
 function formatMarketPrice(value: number, unit: string): string {
   const amount = unit.toUpperCase().startsWith("NGN")
     ? new Intl.NumberFormat("en-NG", {
@@ -403,7 +459,7 @@ function evidenceRows(domain: string, evidence: Record<string, unknown>): Array<
   for (const k of Object.keys(evidence)) {
     if (
       !keys.includes(k) &&
-      !["history_events", "nearby", "nearby_counts", "listings", "listing_kind", "data_mode", "hazard_index_eligible"].includes(k)
+      !["history_events", "nearby", "nearby_counts", "listings", "listing_kind", "data_mode", "hazard_index_eligible", "network_coverage", "connectivity_read"].includes(k)
     ) keys.push(k);
   }
 
@@ -479,6 +535,45 @@ function HabitabilityDetails({ result, dark }: { result: DomainResult; dark: boo
           ["Data period", String(result.evidence.data_period ?? "—")],
         ]}
       />
+    </div>
+  );
+}
+
+/** Extra 5G / mobile-network lines under the Internet / ISP amenity row. */
+function IspNetworkDetails({ evidence, dark }: { evidence: Record<string, unknown>; dark: boolean }) {
+  const network = parseNetworkCoverage(evidence);
+  if (network.providers.length === 0 && !network.connectivityRead) return null;
+  const isp = asRecord(evidence.isp);
+  const hasIspPoi = typeof isp.distance_m === "number";
+  return (
+    <div className={clsx("mt-1.5 space-y-1.5 text-left", dark ? "text-gray-400" : "text-slate-500")}>
+      {hasIspPoi && network.connectivityRead && (
+        <p className="text-[10px] leading-snug">{network.connectivityRead}</p>
+      )}
+      {network.providers.length > 0 && (
+        <ul className="space-y-1">
+          {network.providers.map((provider) => (
+            <li key={provider.provider} className="flex items-baseline justify-between gap-2 text-[10px]">
+              <span>
+                {provider.provider}
+                <span className={clsx("ml-1", dark ? "text-gray-500" : "text-slate-400")}>
+                  {provider.generation}
+                  {provider.note ? ` · ${provider.note}` : ""}
+                </span>
+              </span>
+              <span className={clsx("shrink-0 font-semibold tabular-nums", dark ? "text-gray-300" : "text-slate-700")}>
+                {provider.available === "yes"
+                  ? provider.quality === "unknown"
+                    ? "Available"
+                    : provider.quality
+                  : provider.available === "no"
+                    ? "No 5G"
+                    : "Unknown"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -1627,6 +1722,9 @@ export function ScorecardConsole({
                                     >
                                       View list · {amenityCount}
                                     </button>
+                                  )}
+                                  {d === "amenities" && row.key === "isp" && (
+                                    <IspNetworkDetails evidence={r.evidence} dark={dark} />
                                   )}
                                 </td>
                               </tr>

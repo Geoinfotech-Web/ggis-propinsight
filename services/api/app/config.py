@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     ggis_flood_hmac_secret: str = "dev-secret"
     ggis_flood_timeout_ms: int = 5_000
     ggis_flood_data_mode: Literal["mock", "live"] = "mock"
+    enext_coverage_base_url: str = "https://server.enextwireless.com:8443/geoserver"
+    enext_coverage_timeout_ms: int = 4_000
 
     # Auth
     jwt_secret: str = "change-me-dev-only"

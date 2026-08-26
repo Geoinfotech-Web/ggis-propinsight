@@ -58,6 +58,10 @@ from app.location_intelligence.livability import (
     score_livability,
 )
 from app.location_intelligence.market import market_samples_for_point, score_market
+from app.location_intelligence.network_coverage import (
+    EnextNetworkCoverageClient,
+    get_network_coverage_client,
+)
 from app.location_intelligence.personas import (
     domain_priority,
     filter_domains_for_persona,
@@ -460,6 +464,7 @@ async def _score_market(
 async def analyze(
     req: AnalyzeRequest,
     flood: GGISFloodClient | None = None,
+    network_coverage: EnextNetworkCoverageClient | None = None,
     versions: dict[str, str] | None = None,
     cache: ScorecardCache | None = None,
     session: AsyncSession | None = None,
@@ -467,6 +472,7 @@ async def analyze(
     """Compute (or serve from cache) the eight-domain scorecard."""
     flood = flood or get_flood_client()
     lon, lat = _point_of(req)
+    network_coverage = network_coverage or get_network_coverage_client()
     gh8 = _geohash8(lon, lat)
     versions = versions or {}
     persona_key = resolve_persona_key(req.profile)
@@ -633,6 +639,39 @@ async def analyze(
         persona_key,
         radius_m,
     )
+    try:
+        coverage = await network_coverage.lookup(lon, lat)
+    except Exception:  # noqa: BLE001 - evidence enrichment must never fail analyze
+        coverage = {
+            "providers": [],
+            "providers_checked": 0,
+            "providers_with_5g": [],
+            "available_count": 0,
+            "connectivity_read": "Coverage unavailable",
+            "source": "Enext Wireless EMetrics",
+            "source_url": "https://metrics.enextwireless.com/",
+            "checked_at": None,
+        }
+    # Fold mobile/5G evidence under Internet/ISP amenity details (not a separate block).
+    if "amenities" in domains:
+        isp_raw = domains["amenities"].evidence.get("isp")
+        if isinstance(isp_raw, dict):
+            domains["amenities"].evidence["isp"] = {
+                **isp_raw,
+                "network_coverage": coverage,
+                "connectivity_read": coverage["connectivity_read"],
+            }
+        elif isp_raw is None:
+            domains["amenities"].evidence["isp"] = {
+                "network_coverage": coverage,
+                "connectivity_read": coverage["connectivity_read"],
+            }
+        else:
+            domains["amenities"].evidence["isp"] = {
+                "value": isp_raw,
+                "network_coverage": coverage,
+                "connectivity_read": coverage["connectivity_read"],
+            }
 
     for d in LATER_DOMAINS:
         domains[d] = _pending(d, versions)

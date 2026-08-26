@@ -55,6 +55,33 @@ class _FakeCache:
         self.store[key] = value
 
 
+class _StubCoverage:
+    async def lookup(self, lon, lat):  # noqa: ANN001
+        return {
+            "providers": [
+                {
+                    "provider": "MTN",
+                    "generation": "5G",
+                    "available": "yes",
+                    "quality": "good",
+                },
+                {
+                    "provider": "Airtel",
+                    "generation": "5G",
+                    "available": "no",
+                    "quality": "unknown",
+                },
+            ],
+            "providers_checked": 2,
+            "providers_with_5g": ["MTN"],
+            "available_count": 1,
+            "connectivity_read": "Some 5G availability",
+            "source": "Enext Wireless EMetrics",
+            "source_url": "https://metrics.enextwireless.com/",
+            "checked_at": "2026-08-26T11:00:00Z",
+        }
+
+
 def _req() -> AnalyzeRequest:
     return AnalyzeRequest(geometry=GeoJSONGeometry(type="Point", coordinates=[7.3986, 8.9634]))
 
@@ -371,6 +398,25 @@ async def test_analyze_investor_profile_sets_persona_and_priority():
     assert "feasibility" in res.domains
     assert "feasibility" in res.domain_priority
     assert res.fit_score is not None  # at least flood is scored
+
+
+@pytest.mark.asyncio
+async def test_analyze_enriches_isp_amenity_with_network_coverage():
+    res = await analyze(
+        _req(),
+        flood=_StubFlood(_ok_flood()),  # type: ignore[arg-type]
+        network_coverage=_StubCoverage(),  # type: ignore[arg-type]
+    )
+
+    isp = res.domains["amenities"].evidence["isp"]
+    assert isinstance(isp, dict)
+    assert isp["network_coverage"]["providers_checked"] == 2
+    assert isp["connectivity_read"] == "Some 5G availability"
+    assert "network_coverage" not in res.domains["amenities"].evidence
+    livability = res.domains.get("livability")
+    if livability is not None:
+        assert "connectivity_read" not in livability.evidence
+        assert "network_coverage" not in livability.evidence
 
 
 @pytest.mark.asyncio
