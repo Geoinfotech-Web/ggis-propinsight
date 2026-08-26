@@ -879,6 +879,7 @@ export function ScorecardConsole({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const copiedTimerRef = useRef<number | null>(null);
+  const domainCardRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const toggle = (id: string) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -949,7 +950,15 @@ export function ScorecardConsole({
         .filter((entry): entry is { d: string; r: DomainResult } => Boolean(entry.r))
     : [];
   const openDomainId = domainEntries.find(({ d }) => expanded[d])?.d ?? null;
-  const closedDomainEntries = domainEntries.filter(({ d }) => d !== openDomainId);
+
+  useEffect(() => {
+    if (!openDomainId) return;
+    const node = domainCardRefs.current[openDomainId];
+    if (!node) return;
+    window.requestAnimationFrame(() => {
+      node.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }, [openDomainId]);
 
   return (
     <aside
@@ -1415,13 +1424,10 @@ export function ScorecardConsole({
               </div>
             )}
 
-            {openDomainId && (() => {
-              const d = openDomainId;
-              const r = card.domains[d]!;
+            {domainEntries.map(({ d, r }) => {
               const isFlood = d === "flood";
               const rows = evidenceRows(d, r.evidence ?? {});
               const bar = isFlood ? floodHazardColor(r) : scoreBarColor(r.score, r.status);
-              const highPriority = topDomains.has(d);
               const badge = isFlood
                 ? floodRiskBadge(r, dark)
                 : qualityBadge(r.score, r.status, dark);
@@ -1437,7 +1443,10 @@ export function ScorecardConsole({
               ]
                 .filter(Boolean)
                 .join("\n");
-              const domainMenuItems: BentoMenuItem[] = [
+
+              if (expanded[d]) {
+                const highPriority = topDomains.has(d);
+                const domainMenuItems: BentoMenuItem[] = [
                 {
                   id: "view",
                   label: "Hide Details",
@@ -1481,7 +1490,10 @@ export function ScorecardConsole({
 
               return (
                 <section
-                  key={`open-${d}`}
+                  key={d}
+                  ref={(node) => {
+                    domainCardRefs.current[d] = node;
+                  }}
                   className={clsx(
                     "bento-card relative col-span-2 w-full overflow-visible rounded-2xl border",
                     dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white",
@@ -1672,27 +1684,8 @@ export function ScorecardConsole({
                   </div>
                 </section>
               );
-            })()}
+              }
 
-            {closedDomainEntries.map(({ d, r }) => {
-              const isFlood = d === "flood";
-              const rows = evidenceRows(d, r.evidence ?? {});
-              const bar = isFlood ? floodHazardColor(r) : scoreBarColor(r.score, r.status);
-              const badge = isFlood
-                ? floodRiskBadge(r, dark)
-                : qualityBadge(r.score, r.status, dark);
-              if (d === "livability" && r.rating) badge.label = r.rating;
-              const scoreSnippet = r.score !== null
-                ? r.score.toFixed(0)
-                : isFlood
-                  ? "N/P"
-                  : "—";
-              const evidenceText = [
-                r.note && r.status !== "demo" ? r.note : null,
-                ...rows.map((row) => `${row.label}: ${row.value}`),
-              ]
-                .filter(Boolean)
-                .join("\n");
               const domainMenuItems: BentoMenuItem[] = [
                 {
                   id: "view",
@@ -1738,6 +1731,9 @@ export function ScorecardConsole({
               return (
                 <section
                   key={d}
+                  ref={(node) => {
+                    domainCardRefs.current[d] = node;
+                  }}
                   className={clsx(
                     "bento-card relative col-span-1 flex min-h-[11.5rem] w-full min-w-0 flex-col overflow-visible rounded-[1.5rem] border",
                     dark ? "border-gray-800 bg-gray-900" : "border-slate-200 bg-white",
