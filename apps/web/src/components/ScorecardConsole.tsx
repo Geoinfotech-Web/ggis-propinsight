@@ -1553,9 +1553,6 @@ export function ScorecardConsole({
                             High priority · {personaLabel}
                           </span>
                         )}
-                        <span className="font-display text-lg font-semibold tabular-nums">
-                          {scoreSnippet}
-                        </span>
                       </div>
                     </div>
                     <button
