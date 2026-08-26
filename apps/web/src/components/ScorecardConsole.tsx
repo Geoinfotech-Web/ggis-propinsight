@@ -1189,7 +1189,9 @@ export function ScorecardConsole({
                   aria-expanded={expanded.summary_overview ?? false}
                   className="relative w-full p-3 pr-11 text-left"
                 >
-                  <p className={clsx("pr-1 text-[11px] font-semibold uppercase tracking-wide", dark ? "text-gray-400" : "text-slate-500")}>What this means for you</p>
+                  <p className={clsx("pr-1 text-[11px] font-semibold uppercase tracking-wide", dark ? "text-gray-400" : "text-slate-500")}>
+                    What this means for you
+                  </p>
                   <p className={clsx("mt-2 text-sm font-normal leading-snug", dark ? "text-gray-300" : "text-slate-600")}>
                     {card.summary.replace(/\s*—\s*/g, " - ").replace(/\s*--\s*/g, " - ")}
                   </p>
@@ -1203,6 +1205,16 @@ export function ScorecardConsole({
                       ))}
                     </div>
                   )}
+                  <span
+                    className={clsx(
+                      "mt-3 inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-semibold",
+                      dark
+                        ? "bg-gray-800 text-sky-300 hover:bg-gray-700"
+                        : "bg-sky-50 text-sky-700 hover:bg-sky-100",
+                    )}
+                  >
+                    {(expanded.summary_overview ?? false) ? "Show less" : "More"}
+                  </span>
                 </button>
               </section>
             )}
