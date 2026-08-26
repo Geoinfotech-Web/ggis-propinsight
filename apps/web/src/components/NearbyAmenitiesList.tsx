@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import type { Theme } from "../theme";
+import { IconChevronLeft, IconChevronRight } from "./Icons";
 
 export type NearbyPoiItem = {
   category: string;
@@ -30,23 +32,74 @@ type Props = {
   items: NearbyPoiItem[];
   open: boolean;
   category?: string | null;
+  categoryCounts?: Record<string, number>;
   elevated?: boolean;
   radiusKm?: number;
   totalCount?: number;
   onClose: () => void;
+  onCategoryChange?: (category: string) => void;
   onSelect?: (item: NearbyPoiItem) => void;
 };
 
 /** Full amenities list within the scorecard's selected search radius. */
-export function NearbyAmenitiesList({ theme, items, open, category, elevated = false, radiusKm = 5, totalCount, onClose, onSelect }: Props) {
-  if (!open) return null;
+export function NearbyAmenitiesList({
+  theme,
+  items,
+  open,
+  category,
+  categoryCounts,
+  elevated = false,
+  radiusKm = 5,
+  totalCount,
+  onClose,
+  onCategoryChange,
+  onSelect,
+}: Props) {
   const dark = theme === "dark";
-  const visibleItems = category ? items.filter((item) => item.category === category) : items;
-  const groups = CATEGORY_ORDER.map((cat) => ({
-    cat,
-    items: visibleItems.filter((p) => p.category === cat).sort((a, b) => a.distance_m - b.distance_m),
-  })).filter((g) => g.items.length > 0);
-  const title = category ? (CATEGORY_LABELS[category] ?? category) : "Amenities";
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const activeTabRef = useRef<HTMLButtonElement>(null);
+  const [tabScroll, setTabScroll] = useState({ left: false, right: false });
+  const availableCategories = CATEGORY_ORDER.filter((cat) => {
+    const count = categoryCounts?.[cat] ?? items.filter((item) => item.category === cat).length;
+    return count > 0 || cat === category;
+  });
+  const activeCategory = category && availableCategories.includes(category as (typeof CATEGORY_ORDER)[number])
+    ? category
+    : availableCategories[0] ?? category ?? null;
+  const visibleItems = activeCategory
+    ? items.filter((item) => item.category === activeCategory).sort((a, b) => a.distance_m - b.distance_m)
+    : [];
+  const activeTotal = activeCategory
+    ? categoryCounts?.[activeCategory] ?? totalCount ?? visibleItems.length
+    : totalCount ?? 0;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const strip = tabsRef.current;
+    if (!strip) return undefined;
+    const updateScrollState = () => {
+      const maxScrollLeft = strip.scrollWidth - strip.clientWidth;
+      setTabScroll({
+        left: strip.scrollLeft > 2,
+        right: strip.scrollLeft < maxScrollLeft - 2,
+      });
+    };
+    updateScrollState();
+    strip.addEventListener("scroll", updateScrollState, { passive: true });
+    const resizeObserver = new ResizeObserver(updateScrollState);
+    resizeObserver.observe(strip);
+    return () => {
+      strip.removeEventListener("scroll", updateScrollState);
+      resizeObserver.disconnect();
+    };
+  }, [open, availableCategories.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    activeTabRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [activeCategory, open]);
+
+  if (!open) return null;
 
   return (
     <div
@@ -81,13 +134,12 @@ export function NearbyAmenitiesList({ theme, items, open, category, elevated = f
               Within {radiusKm} km
             </p>
             <h2 id="nearby-amenities-title" className="font-display text-lg font-semibold tracking-tight">
-              {title}
+              Amenities
             </h2>
             <p className={clsx("text-[11px]", dark ? "text-gray-400" : "text-slate-500")}>
-              {totalCount && totalCount > visibleItems.length
-                ? `Showing ${visibleItems.length} closest of ${totalCount} places`
+              {activeTotal > visibleItems.length
+                ? `Showing ${visibleItems.length} closest of ${activeTotal} places`
                 : `${visibleItems.length} place${visibleItems.length === 1 ? "" : "s"}`}
-              {!category && " · schools, hospitals, markets, banks"}
             </p>
           </div>
           <button
@@ -102,45 +154,124 @@ export function NearbyAmenitiesList({ theme, items, open, category, elevated = f
           </button>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3">
-          {groups.length === 0 ? (
+        {availableCategories.length > 0 && (
+          <div
+            className={clsx(
+              "relative shrink-0 border-b",
+              dark ? "border-gray-800" : "border-slate-200/80",
+            )}
+          >
+            <div
+              ref={tabsRef}
+              className={clsx(
+                "amenity-tabs-scroll flex divide-x overflow-x-auto px-8",
+                dark ? "divide-gray-700/80" : "divide-slate-300/80",
+              )}
+              role="tablist"
+              aria-label="Amenity categories"
+            >
+              {availableCategories.map((cat) => {
+                const selected = cat === activeCategory;
+                const count = categoryCounts?.[cat] ?? items.filter((item) => item.category === cat).length;
+                return (
+                  <button
+                    key={cat}
+                    ref={selected ? activeTabRef : undefined}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    aria-controls="nearby-amenities-panel"
+                    onClick={() => onCategoryChange?.(cat)}
+                    className={clsx(
+                      "relative inline-flex shrink-0 items-center gap-1.5 px-3 py-3 text-xs font-semibold transition focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-400",
+                      selected
+                        ? dark
+                          ? "text-sky-200 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-sky-400"
+                          : "text-sky-800 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-sky-600"
+                        : dark
+                          ? "text-gray-300 hover:bg-white/5 hover:text-white"
+                          : "text-slate-600 hover:bg-white/25 hover:text-slate-900",
+                    )}
+                  >
+                    <span>{CATEGORY_LABELS[cat] ?? cat}</span>
+                    <span
+                      className={clsx(
+                        "text-[10px] font-medium tabular-nums",
+                        selected
+                          ? dark ? "text-sky-300" : "text-sky-700"
+                          : dark ? "text-gray-500" : "text-slate-400",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {tabScroll.left && (
+              <button
+                type="button"
+                aria-label="Scroll amenity categories left"
+                onClick={() => tabsRef.current?.scrollBy({ left: -180, behavior: "smooth" })}
+                className={clsx(
+                  "absolute inset-y-0 left-0 z-10 flex w-8 items-center justify-center border-r",
+                  dark
+                    ? "border-gray-700 bg-gray-900/65 text-gray-200"
+                    : "border-slate-200 bg-white/70 text-slate-600",
+                )}
+              >
+                <IconChevronLeft size={14} />
+              </button>
+            )}
+            {tabScroll.right && (
+              <button
+                type="button"
+                aria-label="Scroll amenity categories right"
+                onClick={() => tabsRef.current?.scrollBy({ left: 180, behavior: "smooth" })}
+                className={clsx(
+                  "absolute inset-y-0 right-0 z-10 flex w-8 items-center justify-center border-l",
+                  dark
+                    ? "border-gray-700 bg-gray-900/65 text-gray-200"
+                    : "border-slate-200 bg-white/70 text-slate-600",
+                )}
+              >
+                <IconChevronRight size={14} />
+              </button>
+            )}
+          </div>
+        )}
+
+        <div
+          id="nearby-amenities-panel"
+          role="tabpanel"
+          className="flex-1 space-y-4 overflow-y-auto px-4 py-3"
+        >
+          {visibleItems.length === 0 ? (
             <p className={clsx("text-sm", dark ? "text-gray-400" : "text-slate-500")}>
-              No named amenities found in this radius.
+              No named {activeCategory ? (CATEGORY_LABELS[activeCategory] ?? activeCategory).toLowerCase() : "amenities"} found in this radius.
             </p>
           ) : (
-            groups.map(({ cat, items: groupItems }) => (
-              <section key={cat}>
-                <h3
-                  className={clsx(
-                    "mb-1.5 text-[10px] font-semibold uppercase tracking-widest",
-                    dark ? "text-gray-500" : "text-slate-400",
-                  )}
-                >
-                  {CATEGORY_LABELS[cat] ?? cat} · {groupItems.length}
-                </h3>
-                <ul className={clsx("divide-y rounded-lg border", dark ? "divide-gray-800 border-gray-800" : "divide-slate-100 border-slate-200")}>
-                  {groupItems.map((p) => (
-                    <li key={`${p.category}-${p.name}-${p.distance_m}`}>
-                      <button
-                        type="button"
-                        className={clsx(
-                          "flex w-full items-baseline justify-between gap-3 px-3 py-2.5 text-left text-sm transition",
-                          dark ? "hover:bg-gray-800/80" : "hover:bg-slate-50",
-                          !onSelect && "cursor-default",
-                        )}
-                        onClick={() => onSelect?.(p)}
-                        disabled={!onSelect}
-                      >
-                        <span className="min-w-0 font-medium leading-snug">{p.name}</span>
-                        <span className={clsx("shrink-0 tabular-nums text-xs", dark ? "text-gray-400" : "text-slate-500")}>
-                          {formatMetres(p.distance_m)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))
+            <ul className={clsx("divide-y rounded-xl border", dark ? "divide-gray-800 border-gray-800" : "divide-slate-100 border-slate-200")}>
+              {visibleItems.map((p) => (
+                <li key={`${p.category}-${p.name}-${p.distance_m}`}>
+                  <button
+                    type="button"
+                    className={clsx(
+                      "flex w-full items-baseline justify-between gap-3 px-3 py-2.5 text-left text-sm transition",
+                      dark ? "hover:bg-gray-800/80" : "hover:bg-white/45",
+                      !onSelect && "cursor-default",
+                    )}
+                    onClick={() => onSelect?.(p)}
+                    disabled={!onSelect}
+                  >
+                    <span className="min-w-0 font-medium leading-snug">{p.name}</span>
+                    <span className={clsx("shrink-0 tabular-nums text-xs", dark ? "text-gray-400" : "text-slate-500")}>
+                      {formatMetres(p.distance_m)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>

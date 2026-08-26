@@ -219,6 +219,16 @@ textarea {
 .scorecard-scroll::-webkit-scrollbar {
   width: 4px;
 }
+
+.amenity-tabs-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-inline: contain;
+}
+
+.amenity-tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
 .scorecard-scroll::-webkit-scrollbar-track {
   background: transparent;
 }

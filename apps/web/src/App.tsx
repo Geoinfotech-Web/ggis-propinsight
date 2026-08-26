@@ -1386,10 +1386,12 @@ export default function App() {
         items={nearbyAmenities}
         open={amenitiesListOpen}
         category={amenitiesListCategory}
+        categoryCounts={amenityCounts}
         elevated={Boolean(candidate && pendingCard)}
         radiusKm={candidate && pendingCard ? setupRadiusKm : analysisRadiusKm}
         totalCount={amenitiesListTotal}
         onClose={closeAmenitiesList}
+        onCategoryChange={setAmenitiesListCategory}
         onSelect={focusNearby}
       />
 
