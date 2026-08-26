@@ -71,11 +71,19 @@ class _StubCoverage:
                     "available": "no",
                     "quality": "unknown",
                 },
+                {
+                    "provider": "MTN",
+                    "generation": "4G",
+                    "available": "yes",
+                    "quality": "excellent",
+                },
             ],
-            "providers_checked": 2,
+            "providers_checked": 3,
             "providers_with_5g": ["MTN"],
+            "providers_with_4g": ["MTN"],
             "available_count": 1,
-            "connectivity_read": "Some 5G availability",
+            "available_counts": {"4G": 1, "5G": 1},
+            "connectivity_read": "5G available from MTN; supporting 4G / LTE available from MTN",
             "source": "Enext Wireless EMetrics",
             "source_url": "https://metrics.enextwireless.com/",
             "checked_at": "2026-08-26T11:00:00Z",
@@ -410,8 +418,14 @@ async def test_analyze_enriches_isp_amenity_with_network_coverage():
 
     isp = res.domains["amenities"].evidence["isp"]
     assert isinstance(isp, dict)
-    assert isp["network_coverage"]["providers_checked"] == 2
-    assert isp["connectivity_read"] == "Some 5G availability"
+    assert isp["network_coverage"]["providers_checked"] == 3
+    assert isp["network_coverage"]["providers_with_4g"] == ["MTN"]
+    assert isp["network_coverage"]["available_counts"] == {"4G": 1, "5G": 1}
+    assert isp["connectivity_read"] == (
+        "5G available from MTN; supporting 4G / LTE available from MTN"
+    )
+    assert res.domains["amenities"].included_in_fit is False
+    assert res.domains["amenities"].score is None
     assert "network_coverage" not in res.domains["amenities"].evidence
     livability = res.domains.get("livability")
     if livability is not None:

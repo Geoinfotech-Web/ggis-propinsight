@@ -1,6 +1,7 @@
-"""5G / mobile coverage evidence via Enext Wireless GeoServer."""
+"""4G and 5G mobile coverage evidence via Enext Wireless GeoServer."""
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -40,6 +41,12 @@ PROVIDER_LAYERS: tuple[ProviderLayer, ...] = (
         None,
         "The selected source does not currently publish a dedicated 9mobile 5G layer.",
     ),
+    ProviderLayer("MTN", "4G", "mtn_pub_min"),
+    ProviderLayer("Airtel", "4G", "airtel_pub_min"),
+    ProviderLayer("Glo", "4G", "glo_pub_min"),
+    ProviderLayer("9mobile", "4G", "nine_pub_min"),
+    ProviderLayer("Smile", "4G", "smile_pub_min"),
+    ProviderLayer("Spectranet", "4G", "spectranet_pub_min"),
 )
 
 
@@ -62,9 +69,19 @@ def _quality_from_metrics(properties: dict[str, Any]) -> str:
     rsrq = properties.get("average_rsrq")
     sinr = properties.get("average_sinr")
     rsrp = properties.get("average_rsrp")
-    if isinstance(rsrq, (int, float)) and -7 <= rsrq < 0 and isinstance(sinr, (int, float)) and sinr > 20:
+    if (
+        isinstance(rsrq, (int, float))
+        and -7 <= rsrq < 0
+        and isinstance(sinr, (int, float))
+        and sinr > 20
+    ):
         return "excellent"
-    if isinstance(rsrq, (int, float)) and -12 < rsrq < 0 and isinstance(sinr, (int, float)) and sinr > 10:
+    if (
+        isinstance(rsrq, (int, float))
+        and -12 < rsrq < 0
+        and isinstance(sinr, (int, float))
+        and sinr > 10
+    ):
         return "good"
     if isinstance(rsrq, (int, float)) and -15 < rsrq <= -12 and (
         sinr is None or (isinstance(sinr, (int, float)) and sinr >= 2)
@@ -121,16 +138,26 @@ class EnextNetworkCoverageClient:
         response = await client.get(f"{self.base_url}{WFS_PATH}?{urlencode(params)}")
         response.raise_for_status()
         payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Coverage response was not a GeoJSON object")
         features = payload.get("features")
-        if not isinstance(features, list) or not features:
+        if not isinstance(features, list):
+            raise ValueError("Coverage response did not contain a feature collection")
+        if not features:
             return {
                 **base,
                 "available": "no",
                 "quality": "unknown",
-                "note": f"No {layer.provider} {layer.generation} coverage polygon covered this point.",
+                "note": (
+                    f"No {layer.provider} {layer.generation} coverage polygon covered "
+                    "this point."
+                ),
             }
-        properties = features[0].get("properties")
-        props = properties if isinstance(properties, dict) else {}
+        if not isinstance(features[0], dict) or not isinstance(
+            features[0].get("properties"), dict
+        ):
+            raise ValueError("Coverage feature did not contain valid properties")
+        props = features[0]["properties"]
         return {
             **base,
             "available": "yes",
@@ -148,48 +175,74 @@ class EnextNetworkCoverageClient:
 
     async def lookup(self, lon: float, lat: float) -> dict[str, Any]:
         checked_at = _iso_now()
+
+        async def query_provider(
+            client: httpx.AsyncClient, provider: ProviderLayer
+        ) -> dict[str, Any]:
+            try:
+                return await self._query_provider(client, provider, lon, lat, checked_at)
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                return {
+                    "provider": provider.provider,
+                    "generation": provider.generation,
+                    "available": "unknown",
+                    "quality": "unknown",
+                    "note": f"Coverage lookup failed: {exc}",
+                    "source": SOURCE_NAME,
+                    "source_url": SOURCE_URL,
+                    "source_layer": provider.layer_name,
+                    "checked_at": checked_at,
+                }
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            providers: list[dict[str, Any]] = []
-            for provider in PROVIDER_LAYERS:
-                try:
-                    providers.append(
-                        await self._query_provider(client, provider, lon, lat, checked_at)
-                    )
-                except (httpx.HTTPError, ValueError, TypeError) as exc:
-                    providers.append(
-                        {
-                            "provider": provider.provider,
-                            "generation": provider.generation,
-                            "available": "unknown",
-                            "quality": "unknown",
-                            "note": f"Coverage lookup failed: {exc}",
-                            "source": SOURCE_NAME,
-                            "source_url": SOURCE_URL,
-                            "source_layer": provider.layer_name,
-                            "checked_at": checked_at,
-                        }
-                    )
+            providers = list(
+                await asyncio.gather(
+                    *(query_provider(client, provider) for provider in PROVIDER_LAYERS)
+                )
+            )
 
         providers_with_5g = [
             row["provider"]
             for row in providers
             if row.get("generation") == "5G" and row.get("available") == "yes"
         ]
+        providers_with_4g = [
+            row["provider"]
+            for row in providers
+            if row.get("generation") == "4G" and row.get("available") == "yes"
+        ]
         available_count = len(providers_with_5g)
-        if available_count >= 2:
-            connectivity_read = "Strong multi-network 5G presence"
-        elif available_count == 1:
-            connectivity_read = "Some 5G availability"
-        elif any(row.get("available") == "no" for row in providers):
-            connectivity_read = "No 5G evidence at this point"
+        if providers_with_5g:
+            connectivity_read = f"5G available from {', '.join(providers_with_5g)}"
+            if providers_with_4g:
+                connectivity_read += (
+                    f"; supporting 4G / LTE available from {', '.join(providers_with_4g)}"
+                )
+        elif len(providers_with_4g) >= 2:
+            connectivity_read = "Broad multi-network 4G / LTE availability"
+        elif len(providers_with_4g) == 1:
+            connectivity_read = f"Limited 4G / LTE availability from {providers_with_4g[0]}"
         else:
-            connectivity_read = "Coverage unavailable"
+            queryable = [row for row in providers if row.get("source_layer") is not None]
+            confirmed_empty_only = bool(queryable) and all(
+                row.get("available") == "no" for row in queryable
+            )
+            connectivity_read = (
+                "No published 4G/5G coverage evidence at this point"
+                if confirmed_empty_only
+                else "Coverage unavailable"
+            )
 
         return {
             "providers": providers,
             "providers_checked": len(providers),
             "providers_with_5g": providers_with_5g,
+            "providers_with_4g": providers_with_4g,
             "available_count": available_count,
+            "available_counts": {
+                "4G": len(providers_with_4g),
+                "5G": len(providers_with_5g),
+            },
             "connectivity_read": connectivity_read,
             "source": SOURCE_NAME,
             "source_url": SOURCE_URL,

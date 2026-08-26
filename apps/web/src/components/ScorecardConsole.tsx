@@ -361,7 +361,12 @@ type NetworkCoverageProvider = {
 
 function parseNetworkCoverage(
   evidence: Record<string, unknown>,
-): { connectivityRead?: string; providers: NetworkCoverageProvider[] } {
+): {
+  connectivityRead?: string;
+  providers: NetworkCoverageProvider[];
+  source?: string;
+  sourceUrl?: string;
+} {
   const isp =
     evidence.isp && typeof evidence.isp === "object" && !Array.isArray(evidence.isp)
       ? (evidence.isp as Record<string, unknown>)
@@ -382,6 +387,8 @@ function parseNetworkCoverage(
           : typeof coverage.connectivity_read === "string"
             ? coverage.connectivity_read
             : undefined,
+    source: typeof coverage.source === "string" ? coverage.source : undefined,
+    sourceUrl: typeof coverage.source_url === "string" ? coverage.source_url : undefined,
     providers: providers
       .map<NetworkCoverageProvider | null>((item) => {
         if (!item || typeof item !== "object") return null;
@@ -539,40 +546,84 @@ function HabitabilityDetails({ result, dark }: { result: DomainResult; dark: boo
   );
 }
 
-/** Extra 5G / mobile-network lines under the Internet / ISP amenity row. */
+/** Mobile-network evidence grouped under the Internet / ISP amenity row. */
 function IspNetworkDetails({ evidence, dark }: { evidence: Record<string, unknown>; dark: boolean }) {
   const network = parseNetworkCoverage(evidence);
   if (network.providers.length === 0 && !network.connectivityRead) return null;
   const isp = asRecord(evidence.isp);
   const hasIspPoi = typeof isp.distance_m === "number";
+  const generations = [
+    { key: "5G", label: "5G" },
+    { key: "4G", label: "4G / LTE" },
+  ];
+  const statusLabel = (provider: NetworkCoverageProvider) => {
+    if (provider.available === "no") return `No ${provider.generation}`;
+    if (provider.available === "unknown") return "Unknown";
+    if (provider.quality === "unknown") return "Available";
+    return provider.quality.charAt(0).toUpperCase() + provider.quality.slice(1);
+  };
   return (
-    <div className={clsx("mt-1.5 space-y-1.5 text-left", dark ? "text-gray-400" : "text-slate-500")}>
+    <div className={clsx("mt-2 space-y-2.5 text-left", dark ? "text-gray-400" : "text-slate-500")}>
       {hasIspPoi && network.connectivityRead && (
         <p className="text-[10px] leading-snug">{network.connectivityRead}</p>
       )}
       {network.providers.length > 0 && (
-        <ul className="space-y-1">
-          {network.providers.map((provider) => (
-            <li key={provider.provider} className="flex items-baseline justify-between gap-2 text-[10px]">
-              <span>
-                {provider.provider}
-                <span className={clsx("ml-1", dark ? "text-gray-500" : "text-slate-400")}>
-                  {provider.generation}
-                  {provider.note ? ` · ${provider.note}` : ""}
-                </span>
-              </span>
-              <span className={clsx("shrink-0 font-semibold tabular-nums", dark ? "text-gray-300" : "text-slate-700")}>
-                {provider.available === "yes"
-                  ? provider.quality === "unknown"
-                    ? "Available"
-                    : provider.quality
-                  : provider.available === "no"
-                    ? "No 5G"
-                    : "Unknown"}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-2.5">
+          {generations.map((generation) => {
+            const providers = network.providers.filter(
+              (provider) => provider.generation === generation.key,
+            );
+            if (providers.length === 0) return null;
+            return (
+              <section key={generation.key} aria-label={`${generation.label} coverage`}>
+                <p
+                  className={clsx(
+                    "border-b pb-1 text-[9px] font-semibold uppercase tracking-[0.14em]",
+                    dark ? "border-gray-700/80 text-gray-400" : "border-slate-200 text-slate-500",
+                  )}
+                >
+                  {generation.label}
+                </p>
+                <ul className="divide-y divide-slate-200/60 dark:divide-gray-800/80">
+                  {providers.map((provider) => (
+                    <li
+                      key={`${provider.generation}-${provider.provider}`}
+                      className="flex items-start justify-between gap-2 py-1.5 text-[10px]"
+                    >
+                      <span className="min-w-0">
+                        <span className={clsx("font-medium", dark ? "text-gray-300" : "text-slate-700")}>
+                          {provider.provider}
+                        </span>
+                        {provider.note && (
+                          <span className={clsx("mt-0.5 block leading-snug", dark ? "text-gray-500" : "text-slate-400")}>
+                            {provider.note}
+                          </span>
+                        )}
+                      </span>
+                      <span className={clsx("shrink-0 font-semibold tabular-nums", dark ? "text-gray-300" : "text-slate-700")}>
+                        {statusLabel(provider)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      )}
+      {network.source && (
+        network.sourceUrl ? (
+          <a
+            className={clsx("inline-block text-[9px] underline underline-offset-2", dark ? "text-gray-500" : "text-slate-400")}
+            href={network.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Source: {network.source}
+          </a>
+        ) : (
+          <p className="text-[9px]">Source: {network.source}</p>
+        )
       )}
     </div>
   );
