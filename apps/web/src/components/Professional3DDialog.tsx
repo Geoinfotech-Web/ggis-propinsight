@@ -157,7 +157,10 @@ export function Professional3DDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex flex-col bg-slate-950"
+      className={clsx(
+        "fixed inset-0 z-[100] flex flex-col",
+        dark ? "bg-gray-950" : "bg-slate-100",
+      )}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
@@ -165,19 +168,29 @@ export function Professional3DDialog({
       <header
         className={clsx(
           "relative z-20 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 sm:px-5",
-          dark ? "border-gray-800 bg-gray-950 text-gray-100" : "border-slate-200 bg-white text-slate-900",
+          dark
+            ? "border-gray-800 bg-gray-950/90 text-gray-100 backdrop-blur-xl"
+            : "border-slate-200 bg-white/90 text-slate-900 backdrop-blur-xl",
         )}
       >
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 id={titleId} className="truncate text-base font-semibold sm:text-lg">
-              Professional 3D site view
+          <p className="app-kicker">Professional context</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2">
+            <h2 id={titleId} className="font-display truncate text-lg font-semibold tracking-tight sm:text-xl">
+              3D site view
             </h2>
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-800">
+            <span
+              className={clsx(
+                "rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+                dark
+                  ? "border-amber-700/60 bg-amber-950/40 text-amber-300"
+                  : "border-amber-200 bg-amber-50 text-amber-800",
+              )}
+            >
               Pilot
             </span>
           </div>
-          <p className={clsx("truncate text-[11px] sm:text-xs", dark ? "text-gray-400" : "text-slate-500") }>
+          <p className={clsx("mt-0.5 truncate text-[11px] sm:text-xs", dark ? "text-gray-400" : "text-slate-500")}>
             {placeLabel} · {professionalLabel} · {radiusKm} km
           </p>
         </div>
@@ -186,10 +199,10 @@ export function Professional3DDialog({
           type="button"
           onClick={onClose}
           className={clsx(
-            "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition",
+            "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition",
             dark
-              ? "border-gray-700 text-gray-300 hover:bg-gray-800"
-              : "border-slate-200 text-slate-600 hover:bg-slate-100",
+              ? "border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
+              : "border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900",
           )}
           aria-label="Close professional 3D site view"
         >
@@ -198,21 +211,21 @@ export function Professional3DDialog({
       </header>
 
       <div className="relative min-h-0 flex-1">
-        <div ref={mapRef} className="absolute inset-0 bg-slate-900" aria-label="Interactive professional 3D map" />
+        <div ref={mapRef} className={clsx("absolute inset-0", dark ? "bg-gray-900" : "bg-slate-200")} aria-label="Interactive professional 3D map" />
 
         <aside
           className={clsx(
-            "glass-surface absolute left-3 top-3 z-10 w-[min(20rem,calc(100vw-1.5rem))] rounded-3xl border p-3 sm:left-4 sm:top-4 sm:p-4",
+            "glass-surface absolute left-3 top-3 z-10 max-h-[calc(100%-1.5rem)] w-[min(21rem,calc(100vw-1.5rem))] overflow-y-auto rounded-[1.5rem] border p-3 sm:left-4 sm:top-4 sm:p-4",
             dark
               ? "border-gray-700 bg-gray-950/90 text-gray-100"
               : "border-white/80 bg-white/92 text-slate-900",
           )}
         >
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold">Site context layers</p>
-              <p className={clsx("mt-0.5 text-[10px] leading-4", dark ? "text-gray-400" : "text-slate-500") }>
-                Reference planning and observed surface conditions—not surveyed or statutory evidence.
+            <div className="min-w-0">
+              <p className="app-kicker">Site context layers</p>
+              <p className={clsx("mt-1 text-[11px] leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
+                Reference planning and observed surface conditions - not surveyed or statutory evidence.
               </p>
             </div>
             <button
@@ -220,8 +233,10 @@ export function Professional3DDialog({
               disabled={loadState !== "ready"}
               onClick={() => scene?.resetView()}
               className={clsx(
-                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border disabled:cursor-not-allowed disabled:opacity-40",
-                dark ? "border-gray-700 hover:bg-gray-800" : "border-slate-200 hover:bg-slate-100",
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-40",
+                dark
+                  ? "border-gray-700 text-gray-300 hover:bg-gray-800"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-100",
               )}
               aria-label="Reset professional 3D view"
               title="Reset view"
@@ -230,7 +245,12 @@ export function Professional3DDialog({
             </button>
           </div>
 
-          <div className={clsx("mt-3 grid grid-cols-2 rounded-xl p-1", dark ? "bg-gray-900" : "bg-slate-100")}>
+          <div
+            className={clsx(
+              "mt-3 grid grid-cols-2 gap-1 rounded-2xl border p-1",
+              dark ? "border-gray-800 bg-gray-900/80" : "border-slate-200 bg-slate-50",
+            )}
+          >
             {(["analytical", "photorealistic"] as const).map((value) => (
               <button
                 key={value}
@@ -238,10 +258,12 @@ export function Professional3DDialog({
                 disabled={loadState !== "ready" || modeLoading || (value === "photorealistic" && !scene?.photorealisticAvailable)}
                 onClick={() => void changeMode(value)}
                 className={clsx(
-                  "rounded-lg px-2 py-1.5 text-[11px] font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-40",
+                  "rounded-xl px-2 py-2 text-[11px] font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-40",
                   mode === value
-                    ? dark ? "bg-sky-700 text-white" : "bg-white text-sky-800 shadow-sm"
-                    : dark ? "text-gray-400 hover:text-gray-200" : "text-slate-500 hover:text-slate-800",
+                    ? "bg-sky-700 text-white shadow-sm hover:bg-sky-600"
+                    : dark
+                      ? "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+                      : "text-slate-500 hover:bg-white hover:text-slate-800",
                 )}
               >
                 {modeLoading && value === "photorealistic" ? "Loading…" : value}
@@ -249,14 +271,18 @@ export function Professional3DDialog({
             ))}
           </div>
 
-          <p className={clsx("mt-2 text-[10px] leading-4", dark ? "text-gray-400" : "text-slate-500")}>
+          <p className={clsx("mt-2 text-[10px] leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
             {mode === "analytical"
               ? "Evidence-led terrain, Overture buildings and observed canopy zones."
               : "Visual imagery context from Google; coverage and visible conditions may be incomplete or outdated."}
           </p>
-          {modeWarning && <p className="mt-1 text-[10px] leading-4 text-amber-500" role="status">{modeWarning}</p>}
+          {modeWarning && (
+            <p className={clsx("mt-1 text-[10px] leading-relaxed", dark ? "text-amber-300" : "text-amber-700")} role="status">
+              {modeWarning}
+            </p>
+          )}
 
-          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {[
               {
                 label: "Observed land cover",
@@ -291,9 +317,15 @@ export function Professional3DDialog({
               <label
                 key={item.label}
                 className={clsx(
-                  "flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-2",
+                  "flex cursor-pointer items-center gap-2 rounded-2xl border px-2.5 py-2 text-[11px] font-medium transition",
                   item.disabled && "cursor-not-allowed opacity-45",
-                  dark ? "border-gray-700 bg-gray-900/70" : "border-slate-200 bg-slate-50",
+                  item.checked
+                    ? dark
+                      ? "border-sky-700/50 bg-sky-950/40 text-sky-100"
+                      : "border-sky-200 bg-sky-50 text-sky-900"
+                    : dark
+                      ? "border-gray-800 bg-gray-900/70 text-gray-200"
+                      : "border-slate-200 bg-white text-slate-700",
                 )}
               >
                 <input
@@ -303,27 +335,36 @@ export function Professional3DDialog({
                   onChange={item.action}
                   className="h-3.5 w-3.5 accent-sky-600"
                 />
-                <span>{item.label}</span>
+                <span className="leading-snug">{item.label}</span>
               </label>
             ))}
           </div>
 
           {loadState === "loading" && (
-            <p className="mt-3 flex items-center gap-2 text-xs text-sky-500" role="status">
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600" />
+            <p className={clsx("mt-3 flex items-center gap-2 text-xs", dark ? "text-sky-300" : "text-sky-700")} role="status">
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-sky-600" />
               Loading the professional 3D scene…
             </p>
           )}
           {loadState === "error" && (
-            <div className="mt-3 rounded-lg border border-red-300 bg-red-50 p-2 text-[11px] text-red-800">
+            <div
+              className={clsx(
+                "mt-3 rounded-2xl border p-3 text-[11px]",
+                dark ? "border-red-800/70 bg-red-950/40 text-red-200" : "border-red-200 bg-red-50 text-red-800",
+              )}
+            >
               <p>{error}</p>
-              <button type="button" onClick={() => setRetryKey((key) => key + 1)} className="mt-1 font-semibold underline">
+              <button
+                type="button"
+                onClick={() => setRetryKey((key) => key + 1)}
+                className="mt-2 inline-flex rounded-lg bg-sky-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-sky-600"
+              >
                 Retry
               </button>
             </div>
           )}
           {loadState === "ready" && (
-            <div className={clsx("mt-3 border-t pt-2 text-[10px] leading-4", dark ? "border-gray-700 text-gray-400" : "border-slate-200 text-slate-500") }>
+            <div className={clsx("mt-3 border-t pt-3 text-[10px] leading-relaxed", dark ? "border-gray-800 text-gray-400" : "border-slate-200 text-slate-500")}>
               <p>
                 Terrain: {scene?.terrainLabel ?? "base globe"}
                 {scene?.terrainEnabled && scene.terrainExaggeration > 1
@@ -332,29 +373,39 @@ export function Professional3DDialog({
                 {" · "}Buildings: {scene?.buildingStatus.featureCount.toLocaleString() ?? "0"}
                 {" · "}Canopy zones: {scene?.vegetationStatus.featureCount.toLocaleString() ?? "0"}
               </p>
-              <p className="mt-1">
+              <p className="mt-1.5">
                 The reset view focuses on the nearest 3 km of site context; zoom out to inspect the full {radiusKm} km analysis radius.
               </p>
-              {scene?.warnings.map((warning) => <p key={warning} className="mt-1 text-amber-500">{warning}</p>)}
+              {scene?.warnings.map((warning) => (
+                <p key={warning} className={clsx("mt-1", dark ? "text-amber-300" : "text-amber-700")}>
+                  {warning}
+                </p>
+              ))}
               {mode === "analytical" && (
                 <>
-                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1" aria-label="Analytical 3D legend">
+                  <div
+                    className={clsx(
+                      "mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-2xl border p-2.5",
+                      dark ? "border-gray-800 bg-gray-900/70" : "border-slate-200 bg-slate-50",
+                    )}
+                    aria-label="Analytical 3D legend"
+                  >
                     <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-sky-600" />Blue: published height</span>
                     <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-slate-500" />Grey: floors-derived</span>
                     <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-amber-600" />Amber: 6 m visual default</span>
                     <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-green-700" />Green: observed canopy</span>
                   </div>
                   <p className="mt-2">
-                    Buildings: {" "}
+                    Buildings:{" "}
                     <a
                       href="https://www.overturemaps.org/"
                       target="_blank"
                       rel="noreferrer"
-                      className="underline underline-offset-2"
+                      className={clsx("font-semibold underline underline-offset-2", dark ? "text-sky-300" : "text-sky-700")}
                     >
                       Overture Maps contributors (ODbL)
                     </a>
-                    . Canopy polygons are observed zones with illustrative height—not a tree inventory.
+                    . Canopy polygons are observed zones with illustrative height - not a tree inventory.
                   </p>
                 </>
               )}
@@ -362,19 +413,34 @@ export function Professional3DDialog({
           )}
 
           {selectedFeature && mode === "analytical" && (
-            <div className={clsx("mt-3 rounded-xl border p-2 text-[10px] leading-4", dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white")}>
+            <div
+              className={clsx(
+                "bento-card mt-3 rounded-2xl border p-3 text-[11px] leading-relaxed",
+                dark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white",
+              )}
+            >
               <div className="flex items-start justify-between gap-2">
-                <p className="font-semibold">{selectedFeature.title}</p>
-                <button type="button" onClick={() => setSelectedFeature(null)} className="text-xs" aria-label="Close feature details">×</button>
+                <p className="font-display text-sm font-semibold">{selectedFeature.title}</p>
+                <button
+                  type="button"
+                  onClick={() => setSelectedFeature(null)}
+                  className={clsx(
+                    "inline-flex h-7 w-7 items-center justify-center rounded-full border transition",
+                    dark ? "border-gray-700 text-gray-300 hover:bg-gray-800" : "border-slate-200 text-slate-500 hover:bg-slate-50",
+                  )}
+                  aria-label="Close feature details"
+                >
+                  <IconX size={12} />
+                </button>
               </div>
               {selectedFeature.kind === "building" ? (
-                <p className={dark ? "text-gray-400" : "text-slate-500"}>
+                <p className={clsx("mt-1", dark ? "text-gray-400" : "text-slate-500")}>
                   Height basis: {String(selectedFeature.properties.height_basis ?? "unknown").replaceAll("_", " ")}
                   {selectedFeature.properties.num_floors ? ` · ${String(selectedFeature.properties.num_floors)} published floors` : ""}
                   {" · "}Overture release {String(selectedFeature.properties.release ?? "unknown")}
                 </p>
               ) : (
-                <p className={dark ? "text-gray-400" : "text-slate-500"}>
+                <p className={clsx("mt-1", dark ? "text-gray-400" : "text-slate-500")}>
                   Satellite-observed tree cover, not an individual tree inventory or ecological survey.
                 </p>
               )}
@@ -383,7 +449,14 @@ export function Professional3DDialog({
         </aside>
 
         <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 flex justify-center">
-          <p className="max-w-2xl rounded-full bg-slate-950/80 px-4 py-2 text-center text-[10px] leading-4 text-slate-200 shadow-lg backdrop-blur">
+          <p
+            className={clsx(
+              "glass-surface max-w-2xl rounded-full border px-4 py-2 text-center text-[10px] leading-relaxed",
+              dark
+                ? "border-gray-700 bg-gray-950/85 text-gray-200"
+                : "border-white/80 bg-white/90 text-slate-600",
+            )}
+          >
             Visual decision support only. Confirm terrain, drainage, buildings, planning and site conditions through survey and official records.
           </p>
         </div>
