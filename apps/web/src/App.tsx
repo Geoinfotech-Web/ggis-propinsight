@@ -40,6 +40,7 @@ import { mappedProjects } from "./lib/projectsMap";
 import {
   analysisBufferBounds,
   hideAnalysisBuffer,
+  raiseAnalysisBuffer,
   showAnalysisBuffer,
 } from "./lib/analysisBufferMap";
 import {
@@ -794,9 +795,13 @@ export default function App() {
           .setLngLat(markerLngLat)
           .addTo(map);
       }
+      const point = lastPointRef.current;
+      if (point) {
+        showAnalysisBuffer(map, point.lon, point.lat, analysisRadiusKm, theme === "dark");
+      }
       map.resize();
     });
-  }, [basemapId, layerEnabled]);
+  }, [analysisRadiusKm, basemapId, layerEnabled, theme]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -805,6 +810,7 @@ export default function App() {
       if (!map.isStyleLoaded()) return;
       if (layerEnabled("land_cover")) showLandCoverLayer(map);
       else hideLandCoverLayer(map);
+      raiseAnalysisBuffer(map);
     };
     syncLandCover();
     map.on("style.load", syncLandCover);
@@ -841,6 +847,7 @@ export default function App() {
       if (!active || !map.isStyleLoaded()) return;
       if (!enabled) {
         hideLandUseLayer(map);
+        raiseAnalysisBuffer(map);
         return;
       }
       const currentRequest = ++requestId;
@@ -861,6 +868,7 @@ export default function App() {
           return;
         }
         showLandUseLayer(map, data);
+        raiseAnalysisBuffer(map);
       } catch (err) {
         if (active) setMapError((err as Error).message);
       }

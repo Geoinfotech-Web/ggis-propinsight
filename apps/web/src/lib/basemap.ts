@@ -2,9 +2,10 @@ import type { StyleSpecification } from "maplibre-gl";
 
 const OSM_ATTR =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-const CARTO_ATTR = `${OSM_ATTR} &copy; <a href="https://carto.com/attributions">CARTO</a>`;
 const ESRI_ATTR =
   "Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
+const ESRI_BASE_ATTR =
+  "Tiles &copy; Esri — Source: Esri, TomTom, Garmin, FAO, NOAA, USGS";
 
 export type BasemapId = "voyager" | "positron" | "dark" | "satellite" | "streets";
 
@@ -23,7 +24,8 @@ function rasterStyle(
   return {
     version: 8,
     // Required for symbol text-field (amenity name labels).
-    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    // Avoid demotiles.maplibre.org — it now shows an "API key needed" watermark.
+    glyphs: "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
     sources: {
       [id]: {
         type: "raster",
@@ -44,37 +46,37 @@ function rasterStyle(
   };
 }
 
+/** Esri ArcGIS Online public raster tiles (no CARTO quota / API key). */
+const ESRI = {
+  street:
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+  light:
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+  dark:
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+  satellite:
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+} as const;
+
 export const BASEMAPS: BasemapOption[] = [
   {
     id: "voyager",
-    label: "Voyager",
-    style: rasterStyle(
-      "carto-voyager",
-      ["https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"],
-      CARTO_ATTR,
-    ),
+    label: "Streets",
+    style: rasterStyle("esri-street", [ESRI.street], ESRI_BASE_ATTR),
   },
   {
     id: "positron",
     label: "Light",
-    style: rasterStyle(
-      "carto-positron",
-      ["https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],
-      CARTO_ATTR,
-    ),
+    style: rasterStyle("esri-light", [ESRI.light], ESRI_BASE_ATTR),
   },
   {
     id: "dark",
     label: "Dark",
-    style: rasterStyle(
-      "carto-dark",
-      ["https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"],
-      CARTO_ATTR,
-    ),
+    style: rasterStyle("esri-dark", [ESRI.dark], ESRI_BASE_ATTR),
   },
   {
     id: "streets",
-    label: "Streets",
+    label: "OSM",
     style: rasterStyle(
       "osm",
       ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
@@ -84,17 +86,11 @@ export const BASEMAPS: BasemapOption[] = [
   {
     id: "satellite",
     label: "Satellite",
-    style: rasterStyle(
-      "esri-sat",
-      [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      ],
-      ESRI_ATTR,
-    ),
+    style: rasterStyle("esri-sat", [ESRI.satellite], ESRI_ATTR),
   },
 ];
 
-export const DEFAULT_BASEMAP_ID: BasemapId = "voyager";
+export const DEFAULT_BASEMAP_ID: BasemapId = "streets";
 
 export function getBasemap(id: BasemapId): BasemapOption {
   return BASEMAPS.find((b) => b.id === id) ?? BASEMAPS[0];

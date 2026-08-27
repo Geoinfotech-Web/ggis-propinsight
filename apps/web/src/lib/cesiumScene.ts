@@ -364,8 +364,8 @@ export async function createProfessional3DScene(
   if (input.signal?.aborted) throw new DOMException("Professional 3D request aborted", "AbortError");
 
   const baseLayer = new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
-    url: "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-    credit: "OpenStreetMap contributors / CARTO",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+    credit: "Esri, TomTom, Garmin, FAO, NOAA, USGS",
     maximumLevel: 20,
   }));
   const viewer = new Cesium.Viewer(container, {

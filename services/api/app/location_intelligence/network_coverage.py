@@ -97,10 +97,40 @@ def _quality_from_metrics(properties: dict[str, Any]) -> str:
     return "unknown"
 
 
+def _unavailable_coverage(*, checked_at: str | None = None, error: str | None = None) -> dict[str, Any]:
+    return {
+        "providers": [],
+        "providers_checked": 0,
+        "providers_with_5g": [],
+        "available_count": 0,
+        "connectivity_read": "Coverage unavailable",
+        "source": SOURCE_NAME,
+        "source_url": SOURCE_URL,
+        "checked_at": checked_at,
+        **({"error": error} if error else {}),
+    }
+
+
 class EnextNetworkCoverageClient:
     def __init__(self, base_url: str | None = None, timeout_ms: int | None = None) -> None:
         self.base_url = (base_url or settings.enext_coverage_base_url).rstrip("/")
-        self.timeout = (timeout_ms or settings.enext_coverage_timeout_ms) / 1000.0
+        # Keep coverage enrichment from stalling the whole scorecard.
+        timeout_s = (timeout_ms or settings.enext_coverage_timeout_ms) / 1000.0
+        self.timeout = httpx.Timeout(timeout_s, connect=min(2.0, timeout_s))
+        self.overall_timeout_s = max(timeout_s + 1.0, 5.0)
+
+    def _failed_provider(self, layer: ProviderLayer, checked_at: str, exc: Exception) -> dict[str, Any]:
+        return {
+            "provider": layer.provider,
+            "generation": layer.generation,
+            "available": "unknown",
+            "quality": "unknown",
+            "note": f"Coverage lookup failed: {exc}",
+            "source": SOURCE_NAME,
+            "source_url": SOURCE_URL,
+            "source_layer": layer.layer_name,
+            "checked_at": checked_at,
+        }
 
     async def _query_provider(
         self,
@@ -173,7 +203,7 @@ class EnextNetworkCoverageClient:
             },
         }
 
-    async def lookup(self, lon: float, lat: float) -> dict[str, Any]:
+    async def _lookup_providers(self, lon: float, lat: float) -> dict[str, Any]:
         checked_at = _iso_now()
 
         async def query_provider(
@@ -248,6 +278,15 @@ class EnextNetworkCoverageClient:
             "source_url": SOURCE_URL,
             "checked_at": checked_at,
         }
+
+    async def lookup(self, lon: float, lat: float) -> dict[str, Any]:
+        try:
+            return await asyncio.wait_for(
+                self._lookup_providers(lon, lat),
+                timeout=self.overall_timeout_s,
+            )
+        except TimeoutError:
+            return _unavailable_coverage(error="Coverage lookup timed out")
 
 
 _client: EnextNetworkCoverageClient | None = None

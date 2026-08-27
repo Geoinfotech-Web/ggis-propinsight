@@ -5,6 +5,7 @@ const FILL_LAYER_ID = "analysis-buffer-fill";
 const LINE_LAYER_ID = "analysis-buffer-line";
 const LABEL_LAYER_ID = "analysis-buffer-label";
 const EARTH_RADIUS_M = 6_371_008.8;
+const BUFFER_TEXT_FONT = ["Noto Sans Regular"];
 
 function destinationPoint(
   lon: number,
@@ -71,6 +72,13 @@ export function analysisBufferBounds(
   ];
 }
 
+/** Keep the ring above later overlays (land use / land cover). */
+export function raiseAnalysisBuffer(map: maplibregl.Map): void {
+  for (const layerId of [FILL_LAYER_ID, LINE_LAYER_ID, LABEL_LAYER_ID]) {
+    if (map.getLayer(layerId)) map.moveLayer(layerId);
+  }
+}
+
 export function showAnalysisBuffer(
   map: maplibregl.Map,
   lon: number,
@@ -78,7 +86,10 @@ export function showAnalysisBuffer(
   radiusKm: number,
   dark: boolean,
 ): void {
-  if (!map.isStyleLoaded()) return;
+  if (!map.isStyleLoaded()) {
+    map.once("style.load", () => showAnalysisBuffer(map, lon, lat, radiusKm, dark));
+    return;
+  }
   const data = bufferData(lon, lat, radiusKm);
   const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
   if (source) {
@@ -95,10 +106,13 @@ export function showAnalysisBuffer(
       filter: ["==", ["get", "kind"], "area"],
       paint: {
         "fill-color": dark ? "#38bdf8" : "#0369a1",
-        "fill-opacity": 0,
+        "fill-opacity": 0.06,
       },
     });
+  } else {
+    map.setPaintProperty(FILL_LAYER_ID, "fill-color", dark ? "#38bdf8" : "#0369a1");
   }
+
   if (!map.getLayer(LINE_LAYER_ID)) {
     map.addLayer({
       id: LINE_LAYER_ID,
@@ -107,30 +121,45 @@ export function showAnalysisBuffer(
       filter: ["==", ["get", "kind"], "area"],
       paint: {
         "line-color": dark ? "#7dd3fc" : "#0369a1",
-        "line-width": 2,
+        "line-width": 2.5,
         "line-dasharray": [2, 1.5],
+        "line-opacity": 1,
       },
     });
+  } else {
+    map.setPaintProperty(LINE_LAYER_ID, "line-color", dark ? "#7dd3fc" : "#0369a1");
   }
+
   if (!map.getLayer(LABEL_LAYER_ID)) {
-    map.addLayer({
-      id: LABEL_LAYER_ID,
-      type: "symbol",
-      source: SOURCE_ID,
-      filter: ["==", ["get", "kind"], "label"],
-      layout: {
-        "text-field": ["get", "label"],
-        "text-size": 12,
-        "text-offset": [0, -0.6],
-        "text-anchor": "bottom",
-      },
-      paint: {
-        "text-color": dark ? "#e0f2fe" : "#075985",
-        "text-halo-color": dark ? "#0f172a" : "#ffffff",
-        "text-halo-width": 1.5,
-      },
-    });
+    try {
+      map.addLayer({
+        id: LABEL_LAYER_ID,
+        type: "symbol",
+        source: SOURCE_ID,
+        filter: ["==", ["get", "kind"], "label"],
+        layout: {
+          "text-field": ["get", "label"],
+          "text-font": BUFFER_TEXT_FONT,
+          "text-size": 12,
+          "text-offset": [0, -0.6],
+          "text-anchor": "bottom",
+          "text-allow-overlap": true,
+        },
+        paint: {
+          "text-color": dark ? "#e0f2fe" : "#075985",
+          "text-halo-color": dark ? "#0f172a" : "#ffffff",
+          "text-halo-width": 1.5,
+        },
+      });
+    } catch {
+      // Label is optional; the dashed ring is the important cue.
+    }
+  } else {
+    map.setPaintProperty(LABEL_LAYER_ID, "text-color", dark ? "#e0f2fe" : "#075985");
+    map.setPaintProperty(LABEL_LAYER_ID, "text-halo-color", dark ? "#0f172a" : "#ffffff");
   }
+
+  raiseAnalysisBuffer(map);
 }
 
 export function hideAnalysisBuffer(map: maplibregl.Map): void {

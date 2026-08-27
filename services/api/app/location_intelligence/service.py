@@ -641,7 +641,7 @@ async def analyze(
     )
     try:
         coverage = await network_coverage.lookup(lon, lat)
-    except Exception:  # noqa: BLE001 - evidence enrichment must never fail analyze
+    except Exception:  # noqa: BLE001 - ISP enrichment must never block the scorecard
         coverage = {
             "providers": [],
             "providers_checked": 0,
