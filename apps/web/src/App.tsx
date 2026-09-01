@@ -228,6 +228,7 @@ export default function App() {
   const [candidate, setCandidate] = useState<AnalysisCandidate | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(true);
   const [welcomeCandidate, setWelcomeCandidate] = useState<WelcomeLocation | null>(null);
+  const [suggestedPersona, setSuggestedPersona] = useState<PersonaKey | null>(null);
   const [radiusOnlySetup, setRadiusOnlySetup] = useState(false);
   const [analysisPhase, setAnalysisPhase] = useState<AnalysisFlowPhase>("setup");
   const [pendingCard, setPendingCard] = useState<Scorecard | null>(null);
@@ -426,6 +427,7 @@ export default function App() {
       );
     } else {
       setWelcomeCandidate(null);
+      setSuggestedPersona(null);
       setWelcomeOpen(true);
     }
   }, [analysisRadiusKm]);
@@ -448,6 +450,7 @@ export default function App() {
     (selected: WelcomeLocation, suggestedPersona: PersonaKey) => {
       setWelcomeOpen(false);
       setWelcomeCandidate(null);
+      setSuggestedPersona(suggestedPersona);
       beginAnalysisSetup(
         selected.lon,
         selected.lat,
@@ -464,6 +467,7 @@ export default function App() {
     (lon: number, lat: number, label?: string) => {
       setWelcomeOpen(false);
       setWelcomeCandidate(null);
+      setSuggestedPersona(null);
       beginAnalysisSetup(lon, lat, label);
     },
     [beginAnalysisSetup],
@@ -547,6 +551,7 @@ export default function App() {
     setReportGuideOpen(false);
     setProfessional3DOpen(false);
     setCandidate(null);
+    setSuggestedPersona(null);
     setRadiusOnlySetup(false);
     setPendingCard(null);
     setAnalysisPhase("setup");
@@ -1138,6 +1143,7 @@ export default function App() {
     lastPointRef.current = null;
     setCandidate(null);
     setWelcomeCandidate(null);
+    setSuggestedPersona(null);
     setWelcomeOpen(true);
     setAnalysisPhase("setup");
     setPendingCard(null);
@@ -1468,6 +1474,7 @@ export default function App() {
         theme={theme}
         candidate={candidate}
         persona={setupPersona}
+        suggestedPersona={suggestedPersona}
         radiusKm={setupRadiusKm}
         phase={analysisPhase}
         pendingCard={pendingCard}

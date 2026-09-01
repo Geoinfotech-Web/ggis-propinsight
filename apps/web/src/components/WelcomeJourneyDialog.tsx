@@ -83,7 +83,7 @@ function parseCoordinate(value: string): number | null {
 
 export function WelcomeJourneyDialog({
   open,
-  theme,
+  theme: _theme,
   candidate,
   onCandidateChange,
   onConfirm,

@@ -53,10 +53,10 @@ Containers are **up** so the app can be explored (project name `aia`):
 > `docker-compose.yml` and `apps/web/vite.config.ts` (proxy → 8001).
 
 ### Explore it
-- Open the web app → read the welcome → choose an interest → search, enter
+- Open the web app → read the welcome → answer the property-goal question → search, enter
   coordinates, or geolocate → adjust and confirm the map pin → choose a persona
-  and radius → analyse → select **View on map**. Direct map clicks do not start
-  analysis.
+  (the answer marks a suggestion) and radius → analyse → select **View on map**.
+  Direct map clicks do not start analysis.
 - API docs / try endpoints: http://localhost:8001/docs
 - Prove the GGIS integration: `curl http://localhost:8001/v1/meta/flood`
 - Sample analyze call:

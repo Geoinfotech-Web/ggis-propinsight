@@ -15,6 +15,7 @@ type Props = {
   theme: Theme;
   candidate: AnalysisCandidate | null;
   persona: PersonaKey;
+  suggestedPersona?: PersonaKey | null;
   radiusKm: number;
   phase: AnalysisFlowPhase;
   pendingCard: Scorecard | null;
@@ -58,6 +59,7 @@ export function AnalysisSetupDialog({
   theme: _theme,
   candidate,
   persona,
+  suggestedPersona = null,
   radiusKm,
   phase,
   pendingCard,
@@ -181,7 +183,11 @@ export function AnalysisSetupDialog({
           </h2>
           {phase === "setup" && (
             <p className="mt-1 text-[10px] leading-relaxed text-white/75">
-              {step === 1 ? "Select the role that matches your analysis goals." : place}
+              {step === 1
+                ? suggestedPersona
+                  ? `Based on your earlier answer, we suggest ${getPersona(suggestedPersona).label}. You can still choose any report persona.`
+                  : "Select the role that matches your analysis goals."
+                : place}
             </p>
           )}
         </div>
@@ -192,6 +198,7 @@ export function AnalysisSetupDialog({
               {PERSONA_GRID.map((key, index) => {
                 const item = PERSONAS.find((option) => option.key === key)!;
                 const selected = key === persona;
+                const suggested = key === suggestedPersona;
                 return (
                   <button
                     key={key}
@@ -216,8 +223,15 @@ export function AnalysisSetupDialog({
                     >
                       <PersonaIcon persona={key} />
                     </span>
-                    <span className="min-w-0">
-                      <span className={clsx("block text-sm font-bold", selected ? "text-emerald-700" : "text-slate-900")}>{item.label}</span>
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <span className={clsx("block text-sm font-bold", selected ? "text-emerald-700" : "text-slate-900")}>{item.label}</span>
+                          {suggested && (
+                            <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-sky-700">
+                              Suggested for you
+                            </span>
+                          )}
+                        </span>
                       <span className={clsx("mt-0.5 block text-[10px] leading-snug", selected ? "text-emerald-700/80" : "text-slate-500")}>{item.blurb}</span>
                     </span>
                     {selected && <IconCheck size={14} className="absolute right-3 top-3 text-emerald-600" />}
