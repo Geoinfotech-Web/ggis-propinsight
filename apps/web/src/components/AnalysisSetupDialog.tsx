@@ -292,6 +292,33 @@ export function AnalysisSetupDialog({
                   </div>
                 ))}
               </div>
+              {pendingCard.domains.flood && (
+                <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-sm">
+                  <ScoreRing
+                    score={pendingCard.domains.flood.score ?? null}
+                    size="md"
+                    color={
+                      (pendingCard.domains.flood.rating ?? "").toLowerCase().includes("high")
+                        ? "#dc2626"
+                        : (pendingCard.domains.flood.rating ?? "").toLowerCase().includes("moderate")
+                          ? "#ca8a04"
+                          : "#0d9488"
+                    }
+                    label="Flood hazard"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Flood hazard</p>
+                    <p className="text-base font-bold text-slate-900">
+                      {pendingCard.domains.flood.rating ?? "Risk unavailable"}
+                    </p>
+                    {pendingCard.domains.flood.score != null && (
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        PropInsight hazard index · {Math.round(pendingCard.domains.flood.score)} / 100
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -370,7 +397,7 @@ export function AnalysisSetupDialog({
                 )}
               >
                 <IconDownload size={16} />
-                {generatingPdf ? "Generating…" : pdfStatus === "downloaded" ? "Download again" : "Generate report"}
+                {generatingPdf ? "Preparing…" : pdfStatus === "downloaded" ? "Download again" : "Download report"}
               </button>
             </div>
           )}

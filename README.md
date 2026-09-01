@@ -61,10 +61,13 @@ building footprints and satellite-observed tree-canopy zones within the nearest
 when the configured Cesium ion account has coverage; it is never treated as an
 analytical source or cached into PropInsight data layers.
 
+Every fresh web session opens a guided welcome journey: product introduction,
+property interest, address/coordinate selection, draggable map-pin confirmation,
+persona, radius, and analysis. Direct map clicks no longer start an analysis.
 The committed Scorecard keeps its main actions compact: **Edit analysis** opens
 the audience/radius controls, and professional personas receive a separate
 icon-labelled **3D site view** button. A PDF export button appears in the header
-only after the user selects **View on map**. Before a report is committed, the
+as **Download report** only after the user selects **View on map**. Before a report is committed, the
 map legend shows only the FCT land-use reference; report-specific score,
 amenity, security, land-cover, project, and buffer entries appear afterwards.
 

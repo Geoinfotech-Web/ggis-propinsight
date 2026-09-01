@@ -1061,12 +1061,21 @@ export function ScorecardConsole({
     if (copiedTimerRef.current != null) window.clearTimeout(copiedTimerRef.current);
   }, []);
 
-  const orderedDomains =
-    card?.domain_priority && card.domain_priority.length > 0
-      ? [...card.domain_priority]
-      : card
-        ? Object.keys(card.domains)
-        : [...DOMAIN_ORDER];
+  const orderedDomains = (() => {
+    if (!card) return [...DOMAIN_ORDER];
+    const priority =
+      card.domain_priority && card.domain_priority.length > 0
+        ? [...card.domain_priority]
+        : [];
+    const extras = DOMAIN_ORDER.filter(
+      (domain) => domain in card.domains && !priority.includes(domain),
+    );
+    const orphans = Object.keys(card.domains).filter(
+      (domain) => !priority.includes(domain) && !DOMAIN_ORDER.includes(domain as (typeof DOMAIN_ORDER)[number]),
+    );
+    const merged = [...priority, ...extras, ...orphans];
+    return merged.length > 0 ? merged : [...DOMAIN_ORDER];
+  })();
 
   const topDomains = new Set(orderedDomains.slice(0, 3));
   const personaLabel = card?.persona?.label ?? personaDef.label;
@@ -1222,8 +1231,8 @@ export function ScorecardConsole({
       <div className="scorecard-scroll flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-2">
         {!card && !loading && !error && (
           <p className={clsx("text-sm leading-relaxed", dark ? "text-gray-400" : "text-slate-500")}>
-            Search a place, use your current location, or click the map to generate a Location
-            Intelligence Report.
+            Start with the welcome guide, search for a place, or use your current location to
+            generate a Location Intelligence Report.
           </p>
         )}
 

@@ -132,9 +132,9 @@ export function AppHeader({
           <button type="button" onClick={onGenerateReport} disabled={!reportAvailable || reportGenerating || shareGenerating} className={clsx(
             "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#087df1] px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-600 sm:px-5",
             (!reportAvailable || reportGenerating || shareGenerating) && "cursor-not-allowed opacity-45",
-          )} aria-label="Generate PDF report">
+          )} aria-label="Download PDF report">
             <IconReport size={16} />
-            <span className="hidden lg:inline">{reportGenerating ? "Generating…" : "Generate report"}</span>
+            <span className="hidden lg:inline">{reportGenerating ? "Preparing…" : "Download report"}</span>
           </button>
           <button type="button" onClick={onToggleTheme} className={clsx(
             "inline-flex h-10 w-10 items-center justify-center rounded-xl border transition",

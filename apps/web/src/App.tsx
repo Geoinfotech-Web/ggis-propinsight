@@ -24,6 +24,10 @@ import { Professional3DDialog } from "./components/Professional3DDialog";
 import { ReportGuideDialog } from "./components/ReportGuideDialog";
 import { ScorecardConsole } from "./components/ScorecardConsole";
 import {
+  WelcomeJourneyDialog,
+  type WelcomeLocation,
+} from "./components/WelcomeJourneyDialog";
+import {
   DEFAULT_BASEMAP_ID,
   getBasemap,
   type BasemapId,
@@ -222,6 +226,8 @@ export default function App() {
   const [setupPersona, setSetupPersona] = useState<PersonaKey>(() => loadPersona());
   const [setupRadiusKm, setSetupRadiusKm] = useState(() => loadAnalysisRadius());
   const [candidate, setCandidate] = useState<AnalysisCandidate | null>(null);
+  const [welcomeOpen, setWelcomeOpen] = useState(true);
+  const [welcomeCandidate, setWelcomeCandidate] = useState<WelcomeLocation | null>(null);
   const [radiusOnlySetup, setRadiusOnlySetup] = useState(false);
   const [analysisPhase, setAnalysisPhase] = useState<AnalysisFlowPhase>("setup");
   const [pendingCard, setPendingCard] = useState<Scorecard | null>(null);
@@ -362,7 +368,14 @@ export default function App() {
   };
 
   const beginAnalysisSetup = useCallback(
-    (lon: number, lat: number, label?: string, preserveTitle = false, radiusOnly = false) => {
+    (
+      lon: number,
+      lat: number,
+      label?: string,
+      preserveTitle = false,
+      radiusOnly = false,
+      initialPersona: PersonaKey = persona,
+    ) => {
       reportTitleBeforeSetupRef.current = reportTitle;
       analysisAbortRef.current?.abort();
       analysisRequestRef.current += 1;
@@ -375,7 +388,7 @@ export default function App() {
       setShareNotice(null);
       setReportGuideOpen(false);
       setProfessional3DOpen(false);
-      setSetupPersona(persona);
+      setSetupPersona(initialPersona);
       setSetupRadiusKm(analysisRadiusKm);
       setRadiusOnlySetup(radiusOnly);
       if (!preserveTitle) {
@@ -411,8 +424,50 @@ export default function App() {
         analysisBufferBounds(last.lon, last.lat, analysisRadiusKm),
         { padding: 72, duration: 600, maxZoom: 13 },
       );
+    } else {
+      setWelcomeCandidate(null);
+      setWelcomeOpen(true);
     }
   }, [analysisRadiusKm]);
+
+  const previewWelcomeLocation = useCallback((next: WelcomeLocation | null) => {
+    setWelcomeCandidate(next);
+    if (!next) return;
+    suppressAuto3DRef.current = true;
+    changeMapDimension(false, false);
+    mapRef.current?.flyTo({
+      center: [next.lon, next.lat],
+      zoom: 15,
+      pitch: 0,
+      bearing: 0,
+      duration: 900,
+    });
+  }, [changeMapDimension]);
+
+  const confirmWelcomeLocation = useCallback(
+    (selected: WelcomeLocation, suggestedPersona: PersonaKey) => {
+      setWelcomeOpen(false);
+      setWelcomeCandidate(null);
+      beginAnalysisSetup(
+        selected.lon,
+        selected.lat,
+        selected.label,
+        false,
+        false,
+        suggestedPersona,
+      );
+    },
+    [beginAnalysisSetup],
+  );
+
+  const selectPlaceFromToolbar = useCallback(
+    (lon: number, lat: number, label?: string) => {
+      setWelcomeOpen(false);
+      setWelcomeCandidate(null);
+      beginAnalysisSetup(lon, lat, label);
+    },
+    [beginAnalysisSetup],
+  );
 
   const changeSetupRadius = (radiusKm: number) => {
     setSetupRadiusKm(radiusKm);
@@ -720,15 +775,31 @@ export default function App() {
     const map = mapRef.current;
     candidateMarkerRef.current?.remove();
     candidateMarkerRef.current = null;
-    if (!map || !candidate) return;
-    candidateMarkerRef.current = new maplibregl.Marker({ color: "#d97706" })
-      .setLngLat([candidate.lon, candidate.lat])
+    const preview = welcomeOpen ? welcomeCandidate : candidate;
+    if (!map || !preview) return;
+    const marker = new maplibregl.Marker({
+      color: "#d97706",
+      draggable: Boolean(welcomeOpen && welcomeCandidate),
+    })
+      .setLngLat([preview.lon, preview.lat])
       .addTo(map);
+    if (welcomeOpen && welcomeCandidate) {
+      marker.on("dragend", () => {
+        const position = marker.getLngLat();
+        setWelcomeCandidate((current) => current ? {
+          ...current,
+          lon: position.lng,
+          lat: position.lat,
+          label: "Adjusted map location",
+        } : null);
+      });
+    }
+    candidateMarkerRef.current = marker;
     return () => {
       candidateMarkerRef.current?.remove();
       candidateMarkerRef.current = null;
     };
-  }, [candidate]);
+  }, [candidate, welcomeCandidate, welcomeOpen]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -754,19 +825,6 @@ export default function App() {
       map.off("style.load", syncBuffer);
     };
   }, [analysisRadiusKm, candidate, card, setupRadiusKm, theme]);
-
-  // Keep click handler current without remounting the map.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const onClick = (e: maplibregl.MapMouseEvent) => {
-      beginAnalysisSetup(e.lngLat.lng, e.lngLat.lat);
-    };
-    map.on("click", onClick);
-    return () => {
-      map.off("click", onClick);
-    };
-  }, [beginAnalysisSetup]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1020,7 +1078,8 @@ export default function App() {
   };
   const dark = theme === "dark";
   const displayRadiusKm = candidate ? setupRadiusKm : analysisRadiusKm;
-  const amenitiesSourceCard = candidate && pendingCard ? pendingCard : card;
+  const scorecardCard = candidate && pendingCard ? pendingCard : card;
+  const amenitiesSourceCard = scorecardCard;
   const nearbyAmenities = nearbyFromScorecard(amenitiesSourceCard?.domains.amenities?.evidence);
   const nearbyAmenityTotal =
     nearbyTotalFromScorecard(amenitiesSourceCard) || nearbyAmenities.length;
@@ -1078,6 +1137,8 @@ export default function App() {
     pdfAbortRef.current = null;
     lastPointRef.current = null;
     setCandidate(null);
+    setWelcomeCandidate(null);
+    setWelcomeOpen(true);
     setAnalysisPhase("setup");
     setPendingCard(null);
     setAnalysisFlowError(null);
@@ -1148,7 +1209,7 @@ export default function App() {
             theme={theme}
             persona={persona}
             onPersonaChange={onPersonaChange}
-            onSelectPlace={beginAnalysisSetup}
+            onSelectPlace={selectPlaceFromToolbar}
             resetKey={searchResetKey}
             locating={loading}
           />
@@ -1171,12 +1232,12 @@ export default function App() {
           <div className="hidden h-full w-[24.5rem] shrink-0 lg:block xl:w-[26.5rem]">
             <ScorecardConsole
               theme={theme}
-              card={card}
+              card={scorecardCard}
               loading={loading}
-              error={error}
+              error={error ?? analysisFlowError}
               placeLabel={placeLabel}
-              coordinates={committedPoint}
-              persona={persona}
+              coordinates={candidate ?? committedPoint}
+              persona={candidate && pendingCard ? setupPersona : persona}
               onClose={() => setDesktopReportOpen(false)}
               onReset={resetLocationAnalysis}
               onViewNearbyList={openAmenitiesList}
@@ -1199,7 +1260,7 @@ export default function App() {
                 theme={theme}
                 persona={persona}
                 onPersonaChange={onPersonaChange}
-                onSelectPlace={beginAnalysisSetup}
+                onSelectPlace={selectPlaceFromToolbar}
                 resetKey={searchResetKey}
                 locating={loading}
               />
@@ -1369,12 +1430,12 @@ export default function App() {
           <div className="h-[min(44vh,24rem)]">
             <ScorecardConsole
               theme={theme}
-              card={card}
+              card={scorecardCard}
               loading={loading}
-              error={error}
+              error={error ?? analysisFlowError}
               placeLabel={placeLabel}
-              coordinates={committedPoint}
-              persona={persona}
+              coordinates={candidate ?? committedPoint}
+              persona={candidate && pendingCard ? setupPersona : persona}
               onClose={() => setSheetOpen(false)}
               onReset={resetLocationAnalysis}
               onViewNearbyList={openAmenitiesList}
@@ -1421,6 +1482,14 @@ export default function App() {
         onGenerateReport={() => void generatePendingReport()}
         onViewMap={viewCandidateOnMap}
         radiusOnly={radiusOnlySetup}
+      />
+
+      <WelcomeJourneyDialog
+        open={welcomeOpen}
+        theme={theme}
+        candidate={welcomeCandidate}
+        onCandidateChange={previewWelcomeLocation}
+        onConfirm={confirmWelcomeLocation}
       />
 
       {card && (
