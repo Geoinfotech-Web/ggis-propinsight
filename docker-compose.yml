@@ -48,6 +48,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       GGIS_FLOOD_BASE_URL: ${GGIS_FLOOD_BASE_URL:-http://mock-ggis:9100}
       GGIS_FLOOD_DATA_MODE: ${GGIS_FLOOD_DATA_MODE:-mock}
+      AIA_ADMIN_EMAIL: ${AIA_ADMIN_EMAIL:-}
+      AIA_ADMIN_PASSWORD: ${AIA_ADMIN_PASSWORD:-}
+      AIA_ADMIN_PASSWORD_HASH: ${AIA_ADMIN_PASSWORD_HASH:-}
     ports:
       # Host 8001 to coexist with the GGIS Flood Watch stack (which uses 8000).
       - "8001:8000"
