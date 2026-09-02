@@ -15,6 +15,8 @@ type Props = {
   resetKey?: number;
   locating?: boolean;
   compact?: boolean;
+  selectedStateName?: string;
+  viewbox?: [number, number, number, number];
 };
 
 export function MapSearchToolbar({
@@ -25,6 +27,8 @@ export function MapSearchToolbar({
   resetKey,
   locating = false,
   compact = false,
+  selectedStateName,
+  viewbox,
 }: Props) {
   const dark = theme === "dark";
   const [geoBusy, setGeoBusy] = useState(false);
@@ -53,7 +57,14 @@ export function MapSearchToolbar({
             theme={theme}
             size="md"
             resetKey={resetKey}
-            placeholder={compact ? "Search place or district…" : "Search a place, district, or landmark…"}
+            viewbox={viewbox}
+            placeholder={
+              selectedStateName
+                ? `Search within ${selectedStateName}…`
+                : compact
+                ? "Search place or district…"
+                : "Search a place, district, or landmark…"
+            }
             onResult={(hit) => onSelectPlace(hit.lon, hit.lat, hit.label)}
           />
         </div>

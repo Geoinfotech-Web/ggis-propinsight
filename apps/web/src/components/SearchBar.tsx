@@ -9,6 +9,7 @@ type Props = {
   size?: "md" | "lg";
   placeholder?: string;
   resetKey?: number;
+  viewbox?: [number, number, number, number];
   onResult: (hit: PlaceHit) => void;
 };
 
@@ -18,6 +19,7 @@ export function SearchBar({
   size = "md",
   placeholder = "Search a place, district, or landmark…",
   resetKey = 0,
+  viewbox,
   onResult,
 }: Props) {
   const dark = theme === "dark";
@@ -49,7 +51,7 @@ export function SearchBar({
     abortRef.current = ctrl;
     setLoading(true);
     const t = window.setTimeout(() => {
-      searchPlaces(query, ctrl.signal)
+      searchPlaces(query, ctrl.signal, viewbox)
         .then((rows) => {
           if (ctrl.signal.aborted) return;
           setResults(rows);
@@ -69,7 +71,7 @@ export function SearchBar({
       window.clearTimeout(t);
       ctrl.abort();
     };
-  }, [query]);
+  }, [query, viewbox]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-dev-only"
     jwt_algorithm: str = "HS256"
     access_token_ttl_min: int = 30
+    aia_admin_email: str | None = None
+    aia_admin_password: str | None = None
+    aia_admin_password_hash: str | None = None
 
     # CORS
     cors_origins: str = "http://localhost:5173"

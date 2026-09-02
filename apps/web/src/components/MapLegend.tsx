@@ -323,7 +323,7 @@ export function MapLegend({
                   dark ? "text-gray-500" : "text-slate-500",
                 )}
               >
-                Observed land cover · FCT
+                Observed land cover
               </p>
               <div className="space-y-1">
                 {visibleLandCover.map(([color, label]) => (

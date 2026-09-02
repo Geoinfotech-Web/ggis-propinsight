@@ -38,6 +38,14 @@ class AnalyzeRequest(BaseModel):
         le=20_000,
         description="Nearby-data analysis radius in metres (5-20 km).",
     )
+    state_code: str | None = Field(
+        default=None,
+        max_length=8,
+        description=(
+            "Optional selected Nigerian state code. When provided, the API "
+            "validates that the analysis point falls inside that state."
+        ),
+    )
 
 
 class DomainResult(BaseModel):
@@ -82,6 +90,9 @@ class LocationInfo(BaseModel):
     ward: str | None = None
     area_council: str | None = None
     state: str | None = None
+    state_code: str | None = None
+    lga: str | None = None
+    lga_id: int | None = None
     geohash8: str | None = None
     land_use: LandUseInfo | None = None
     land_cover: LandCoverInfo | None = None

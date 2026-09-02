@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import type { Theme } from "../theme";
-import { IconBrandMark, IconEdit, IconExternalLink, IconMoon, IconReport, IconSun } from "./Icons";
+import brandLogo from "../assets/propinsight-logo.png";
+import { IconEdit, IconExternalLink, IconReport } from "./Icons";
 
 type Props = {
   theme: Theme;
-  onToggleTheme: () => void;
   reportTitle: string;
   onReportTitleChange: (title: string) => void;
   reportGuideAvailable?: boolean;
@@ -20,7 +20,6 @@ type Props = {
 
 export function AppHeader({
   theme,
-  onToggleTheme,
   reportTitle,
   onReportTitleChange,
   reportGuideAvailable = false,
@@ -70,13 +69,18 @@ export function AppHeader({
     )}>
       <div className="flex min-h-[4.5rem] items-center gap-3 px-4 py-2 sm:px-6">
         <div className="flex min-w-0 shrink-0 items-center gap-2.5 sm:w-64">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center text-teal-500">
-            <IconBrandMark size={42} />
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center">
+            <img
+              src={brandLogo}
+              alt=""
+              className="h-12 w-12 object-contain"
+              draggable={false}
+            />
           </div>
           <div className="min-w-0">
             <h1 className="truncate font-display text-lg font-bold tracking-tight sm:text-xl">PropInsight</h1>
             <p className={clsx("hidden truncate text-[11px] sm:block", dark ? "text-gray-400" : "text-slate-400")}>
-              FCT pilot · location scorecard
+              Nigeria location scorecard
             </p>
           </div>
         </div>
@@ -135,12 +139,6 @@ export function AppHeader({
           )} aria-label="Download PDF report">
             <IconReport size={16} />
             <span className="hidden lg:inline">{reportGenerating ? "Preparing…" : "Download report"}</span>
-          </button>
-          <button type="button" onClick={onToggleTheme} className={clsx(
-            "inline-flex h-10 w-10 items-center justify-center rounded-xl border transition",
-            dark ? "border-gray-700 text-gray-300 hover:bg-gray-800" : "border-slate-200 text-slate-500 hover:bg-slate-50",
-          )} aria-label="Toggle theme" title="Toggle theme">
-            {dark ? <IconSun size={16} /> : <IconMoon size={16} />}
           </button>
         </div>
       </div>

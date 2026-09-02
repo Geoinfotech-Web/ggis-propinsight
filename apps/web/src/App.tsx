@@ -3,10 +3,13 @@ import clsx from "clsx";
 import maplibregl from "maplibre-gl";
 import {
   analyzePoint,
+  fetchStates,
   fetchLandUse,
+  type StateOption,
   type Scorecard,
 } from "./api";
 import { AppHeader } from "./components/AppHeader";
+import { AdminConsole } from "./components/AdminConsole";
 import {
   AnalysisSetupDialog,
   type AnalysisCandidate,
@@ -59,8 +62,9 @@ import {
 } from "./lib/map3d";
 import { applyTheme, loadTheme, type Theme } from "./theme";
 
-const FCT_CENTER: [number, number] = [7.4913, 9.0579];
-const FCT_HOME_ZOOM = 11;
+const NIGERIA_CENTER: [number, number] = [8.0, 9.6];
+const NIGERIA_HOME_ZOOM = 5.3;
+const SELECTED_STATE_HOME_ZOOM = 8.5;
 
 const POI_LAYER_BY_CATEGORY: Record<string, OverlayLayerId> = {
   school: "school_poi",
@@ -113,7 +117,7 @@ const DEFAULT_LAYERS: OverlayLayer[] = [
   },
   {
     id: "land_cover",
-    label: "Observed land cover · entire FCT",
+    label: "Observed land cover",
     description: "Wall-to-wall satellite classification; not zoning",
     swatch: "#397d49",
     enabled: false,
@@ -192,6 +196,13 @@ function nearbyTotalFromScorecard(card: Scorecard | null): number {
   );
 }
 
+export default function App() {
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/admin")) {
+    return <AdminConsole />;
+  }
+  return <DashboardApp />;
+}
+
 function nearbyCountsFromScorecard(card: Scorecard | null): Record<string, number> | undefined {
   const counts = card?.domains.amenities?.evidence.nearby_counts;
   if (!counts || typeof counts !== "object" || Array.isArray(counts)) return undefined;
@@ -202,7 +213,7 @@ function nearbyCountsFromScorecard(card: Scorecard | null): Record<string, numbe
   );
 }
 
-export default function App() {
+function DashboardApp() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
@@ -217,7 +228,7 @@ export default function App() {
   const analysisAbortRef = useRef<AbortController | null>(null);
   const pdfAbortRef = useRef<AbortController | null>(null);
   const reportTitleBeforeSetupRef = useRef("Untitled 1");
-  const [theme, setTheme] = useState<Theme>(() => {
+  const [theme] = useState<Theme>(() => {
     if (typeof window === "undefined") return "light";
     return loadTheme();
   });
@@ -256,6 +267,14 @@ export default function App() {
   const [reportGuideOpen, setReportGuideOpen] = useState(false);
   const [professional3DOpen, setProfessional3DOpen] = useState(false);
   const [searchResetKey, setSearchResetKey] = useState(0);
+  const [states, setStates] = useState<StateOption[]>([]);
+  const [statesLoading, setStatesLoading] = useState(true);
+  const [selectedStateCode, setSelectedStateCode] = useState("FC");
+
+  const selectedState =
+    states.find((state) => state.code === selectedStateCode) ??
+    states.find((state) => state.code === "FC") ??
+    null;
 
   useEffect(() => {
     applyTheme(theme);
@@ -266,6 +285,61 @@ export default function App() {
     const timeout = window.setTimeout(() => setShareNotice(null), 6_000);
     return () => window.clearTimeout(timeout);
   }, [shareNotice]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setStatesLoading(true);
+    fetchStates(controller.signal)
+      .then((rows) => {
+        setStates(rows);
+        if (!rows.some((state) => state.code === selectedStateCode)) {
+          setSelectedStateCode(rows.find((state) => state.code === "FC")?.code ?? rows[0]?.code ?? "FC");
+        }
+      })
+      .catch(() => setStates([]))
+      .finally(() => {
+        if (!controller.signal.aborted) setStatesLoading(false);
+      });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const pointInsideSelectedState = useCallback(
+    (lon: number, lat: number) => {
+      const bbox = selectedState?.bbox;
+      if (!bbox) return true;
+      return lon >= bbox[0] && lon <= bbox[2] && lat >= bbox[1] && lat <= bbox[3];
+    },
+    [selectedState],
+  );
+
+  const focusSelectedState = useCallback((state: StateOption | null, duration = 900) => {
+    const map = mapRef.current;
+    if (!map || !state?.bbox) return;
+    map.fitBounds(
+      [
+        [state.bbox[0], state.bbox[1]],
+        [state.bbox[2], state.bbox[3]],
+      ],
+      { padding: 72, duration, maxZoom: 10 },
+    );
+  }, []);
+
+  const changeSelectedState = useCallback(
+    (stateCode: string) => {
+      setSelectedStateCode(stateCode);
+      const next = states.find((state) => state.code === stateCode) ?? null;
+      focusSelectedState(next);
+      setWelcomeCandidate(null);
+      setSearchResetKey((key) => key + 1);
+    },
+    [focusSelectedState, states],
+  );
+
+  useEffect(() => {
+    if (!welcomeOpen || candidate || lastPointRef.current) return;
+    focusSelectedState(selectedState, 700);
+  }, [candidate, focusSelectedState, selectedState, welcomeOpen]);
 
   const closeReportGuide = useCallback(() => setReportGuideOpen(false), []);
 
@@ -331,6 +405,7 @@ export default function App() {
           profile,
           radiusKm * 1_000,
           controller.signal,
+          selectedState?.code,
         );
         if (requestId === analysisRequestRef.current) setCard(result);
       } catch (err) {
@@ -347,7 +422,7 @@ export default function App() {
         }
       }
     },
-    [analysisRadiusKm, layerEnabled, persona],
+    [analysisRadiusKm, layerEnabled, persona, selectedState?.code],
   );
 
   const onPersonaChange = (key: PersonaKey) => {
@@ -377,6 +452,11 @@ export default function App() {
       radiusOnly = false,
       initialPersona: PersonaKey = persona,
     ) => {
+      if (!pointInsideSelectedState(lon, lat)) {
+        setError(`Selected point is outside ${selectedState?.name ?? "the selected state"}. Choose the matching state first.`);
+        setShareNotice(`That location is outside ${selectedState?.name ?? "the selected state"}.`);
+        return;
+      }
       reportTitleBeforeSetupRef.current = reportTitle;
       analysisAbortRef.current?.abort();
       analysisRequestRef.current += 1;
@@ -402,7 +482,7 @@ export default function App() {
         maxZoom: 13,
       });
     },
-    [analysisRadiusKm, persona, reportTitle],
+    [analysisRadiusKm, persona, pointInsideSelectedState, reportTitle, selectedState?.name],
   );
 
   const cancelAnalysisSetup = useCallback(() => {
@@ -505,6 +585,7 @@ export default function App() {
         setupPersona,
         setupRadiusKm * 1_000,
         controller.signal,
+        selectedState?.code,
       );
       if (requestId !== analysisRequestRef.current) return;
       setPendingCard(result);
@@ -519,7 +600,7 @@ export default function App() {
         analysisAbortRef.current = null;
       }
     }
-  }, [candidate, setupPersona, setupRadiusKm]);
+  }, [candidate, selectedState?.code, setupPersona, setupRadiusKm]);
 
   const confirmAnalysisSetup = () => {
     if (!candidate) return;
@@ -717,8 +798,8 @@ export default function App() {
     const map = new maplibregl.Map({
       container,
       style: getBasemap(basemapIdRef.current).style,
-      center: FCT_CENTER,
-      zoom: 11,
+      center: selectedState?.centroid ?? NIGERIA_CENTER,
+      zoom: selectedState ? SELECTED_STATE_HOME_ZOOM : NIGERIA_HOME_ZOOM,
     });
     mapRef.current = map;
 
@@ -1075,7 +1156,6 @@ export default function App() {
     setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, enabled: !l.enabled } : l)));
   };
 
-  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
   const toggle3D = () => {
     const enabled = !view3DRef.current;
     suppressAuto3DRef.current = !enabled;
@@ -1179,13 +1259,17 @@ export default function App() {
 
     suppressAuto3DRef.current = false;
     changeMapDimension(false, false);
-    mapRef.current?.flyTo({
-      center: FCT_CENTER,
-      zoom: FCT_HOME_ZOOM,
-      pitch: 0,
-      bearing: 0,
-      duration: 1000,
-    });
+    if (selectedState) {
+      focusSelectedState(selectedState, 1000);
+    } else {
+      mapRef.current?.flyTo({
+        center: NIGERIA_CENTER,
+        zoom: NIGERIA_HOME_ZOOM,
+        pitch: 0,
+        bearing: 0,
+        duration: 1000,
+      });
+    }
   };
 
   return (
@@ -1199,7 +1283,6 @@ export default function App() {
     >
       <AppHeader
         theme={theme}
-        onToggleTheme={toggleTheme}
         reportTitle={reportTitle}
         onReportTitleChange={changeReportTitle}
         reportGuideAvailable={Boolean(card)}
@@ -1218,6 +1301,8 @@ export default function App() {
             onSelectPlace={selectPlaceFromToolbar}
             resetKey={searchResetKey}
             locating={loading}
+            selectedStateName={selectedState?.name}
+            viewbox={selectedState?.bbox}
           />
         }
       />
@@ -1269,6 +1354,8 @@ export default function App() {
                 onSelectPlace={selectPlaceFromToolbar}
                 resetKey={searchResetKey}
                 locating={loading}
+                selectedStateName={selectedState?.name}
+                viewbox={selectedState?.bbox}
               />
             </div>
           </div>
@@ -1353,13 +1440,17 @@ export default function App() {
               onClick={() => {
                 suppressAuto3DRef.current = false;
                 changeMapDimension(false, false);
-                mapRef.current?.flyTo({
-                  center: FCT_CENTER,
-                  zoom: FCT_HOME_ZOOM,
-                  pitch: 0,
-                  bearing: 0,
-                  duration: 1000,
-                });
+                if (selectedState) {
+                  focusSelectedState(selectedState, 1000);
+                } else {
+                  mapRef.current?.flyTo({
+                    center: NIGERIA_CENTER,
+                    zoom: NIGERIA_HOME_ZOOM,
+                    pitch: 0,
+                    bearing: 0,
+                    duration: 1000,
+                  });
+                }
               }}
               className={clsx(
                 "glass-tool liquid-tool-yellow map-rail-control pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border transition",
@@ -1367,7 +1458,7 @@ export default function App() {
                   ? "border-amber-900/70 bg-amber-950/60 text-amber-300 hover:border-amber-700 hover:bg-amber-950/80"
                   : "border-amber-100/80 bg-amber-50/60 text-amber-700 hover:border-amber-300 hover:bg-amber-100/80",
               )}
-              aria-label="Reset map to FCT"
+              aria-label="Reset map to selected state"
               title="Home"
             >
               <IconHome size={15} />
@@ -1493,8 +1584,11 @@ export default function App() {
 
       <WelcomeJourneyDialog
         open={welcomeOpen}
-        theme={theme}
         candidate={welcomeCandidate}
+        states={states}
+        selectedStateCode={selectedStateCode}
+        statesLoading={statesLoading}
+        onStateChange={changeSelectedState}
         onCandidateChange={previewWelcomeLocation}
         onConfirm={confirmWelcomeLocation}
       />

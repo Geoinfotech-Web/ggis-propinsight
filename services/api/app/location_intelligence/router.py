@@ -15,6 +15,7 @@ from app.location_intelligence.professional_3d import (
 from app.location_intelligence.registry import current_layer_versions
 from app.location_intelligence.schemas import AnalyzeRequest, ScorecardResponse
 from app.location_intelligence.service import analyze
+from app.state_readiness import public_states, state_layer_versions
 
 router = APIRouter(prefix="/v1/locations", tags=["locations"])
 
@@ -24,6 +25,12 @@ async def observed_land_cover_meta(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     return await land_cover_meta(session)
+
+
+@router.get("/states")
+async def states_for_selector(session: AsyncSession = Depends(get_session)) -> list[dict]:
+    """Nigeria state selector/readiness for the public report flow."""
+    return await public_states(session)
 
 
 @router.get("/land-cover/tiles/{z}/{x}/{y}.png")
@@ -99,4 +106,5 @@ async def analyze_location(
     result (Redis, keyed by geohash8 + versions + profile).
     """
     versions = await current_layer_versions(session)
-    return await analyze(req, versions=versions, cache=cache, session=session)
+    effective_versions = await state_layer_versions(session, versions, req.state_code)
+    return await analyze(req, versions=effective_versions, cache=cache, session=session)

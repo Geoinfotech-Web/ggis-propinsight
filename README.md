@@ -2,7 +2,8 @@
 
 **Accommodation Intelligence Application (AIA)** — the engineering codename for
 **GGIS PropInsight**, a location-intelligence web platform for estate development,
-home building, and property-acquisition decisions in Nigeria. Pilot: FCT (Abuja).
+home building, and property-acquisition decisions in Nigeria. FCT is the first
+fully published state in a phased nationwide rollout.
 
 > Public-facing branding is **GGIS PropInsight**; repositories, schemas, and internal
 > artefacts use the **AIA** identifier. See `docs/` for the Project Overview (v1.2),
@@ -32,10 +33,26 @@ docker compose up --build
 
 - API:        http://localhost:8001  (`/health`, `/docs`, `/v1/meta/flood`)
 - Web:        http://localhost:5174
+- Admin GIS:  http://localhost:5174/admin
 - Mock GGIS:  http://localhost:9100/v1/meta/model
 
 The API container runs `alembic upgrade head` on start (creates the PostGIS schema
 and seeds the `fct-v1` scoring profile), then serves with autoreload.
+
+### Admin GIS console
+
+Set one of the admin bootstrap options in `.env`, then restart the API:
+
+```bash
+AIA_ADMIN_EMAIL=admin@example.com
+AIA_ADMIN_PASSWORD=change-this
+# or AIA_ADMIN_PASSWORD_HASH=<passlib pbkdf2_sha256 hash>
+```
+
+The `/admin` console accepts zipped shapefiles and GeoJSON for state, LGA,
+ward, and masterplan uploads. Batches are validated and previewed before publish;
+publishing bumps per-state layer readiness and rollback restores the previous
+published batch when available.
 
 ### Try the core endpoint
 

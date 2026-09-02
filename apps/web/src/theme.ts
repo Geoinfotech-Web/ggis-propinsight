@@ -1,14 +1,12 @@
-/** Light/dark theme helpers (GGIS design template §6). */
+/** Theme helpers. PropInsight currently runs in the light interface only. */
 
 export type Theme = "light" | "dark";
 
 export function loadTheme(): Theme {
-  const saved = localStorage.getItem("aia-theme");
-  if (saved === "light" || saved === "dark") return saved;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "light";
 }
 
-export function applyTheme(theme: Theme): void {
-  document.documentElement.dataset.theme = theme;
-  localStorage.setItem("aia-theme", theme);
+export function applyTheme(_theme: Theme): void {
+  document.documentElement.dataset.theme = "light";
+  localStorage.setItem("aia-theme", "light");
 }

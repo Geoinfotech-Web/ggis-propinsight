@@ -50,6 +50,8 @@ class Ward(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     source_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    state_code: Mapped[str | None] = mapped_column(ForeignKey("states.code"), index=True)
+    lga_id: Mapped[int | None] = mapped_column(ForeignKey("lgas.id"), index=True)
     name: Mapped[str] = mapped_column(String(160), index=True)
     area_council: Mapped[str] = mapped_column(String(160), index=True)
     state: Mapped[str] = mapped_column(String(80))
@@ -161,6 +163,113 @@ class TerritoryBoundary(Base):
     source_version: Mapped[str | None] = mapped_column(String(40))
     geom: Mapped[object] = mapped_column(Geometry("MULTIPOLYGON", srid=SRID))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StateBoundary(Base):
+    """Operational state boundary and readiness summary for nationwide rollout."""
+
+    __tablename__ = "states"
+
+    code: Mapped[str] = mapped_column(String(8), primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    capital: Mapped[str | None] = mapped_column(String(120))
+    centroid_lon: Mapped[float] = mapped_column(Float)
+    centroid_lat: Mapped[float] = mapped_column(Float)
+    bbox: Mapped[list] = mapped_column(JSONB, default=list)
+    published: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    source_version: Mapped[str | None] = mapped_column(String(40))
+    readiness: Mapped[str] = mapped_column(String(24), default="setup_required", index=True)
+    geom: Mapped[object] = mapped_column(Geometry("MULTIPOLYGON", srid=SRID))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LgaBoundary(Base):
+    """Operational LGA boundary linked to a state."""
+
+    __tablename__ = "lgas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    state_code: Mapped[str] = mapped_column(ForeignKey("states.code"), index=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    source: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    source_version: Mapped[str | None] = mapped_column(String(40))
+    geom: Mapped[object] = mapped_column(Geometry("MULTIPOLYGON", srid=SRID))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MasterplanArea(Base):
+    """Official or advisory masterplan polygon normalized to the land-use taxonomy."""
+
+    __tablename__ = "masterplan_areas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    state_code: Mapped[str] = mapped_column(ForeignKey("states.code"), index=True)
+    lga_id: Mapped[int | None] = mapped_column(ForeignKey("lgas.id"), index=True)
+    plan_name: Mapped[str | None] = mapped_column(String(240))
+    category: Mapped[str] = mapped_column(String(40), index=True)
+    source_class: Mapped[str | None] = mapped_column(String(120))
+    source_doc: Mapped[str | None] = mapped_column(String(240))
+    effective_date: Mapped[date | None] = mapped_column(Date)
+    source: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    layer_version: Mapped[str] = mapped_column(String(32), index=True)
+    geom: Mapped[object] = mapped_column(Geometry("MULTIPOLYGON", srid=SRID))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StateLayerRegistry(Base):
+    """Layer readiness and versioning per state."""
+
+    __tablename__ = "state_layer_registry"
+
+    state_code: Mapped[str] = mapped_column(ForeignKey("states.code"), primary_key=True)
+    layer: Mapped[str] = mapped_column(String(32), primary_key=True)
+    version: Mapped[str] = mapped_column(String(32), default="unpublished")
+    status: Mapped[str] = mapped_column(String(24), default="unpublished", index=True)
+    source: Mapped[str | None] = mapped_column(String(160))
+    notes: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class GisUploadBatch(Base):
+    """Draft admin upload plus validation and preview payload."""
+
+    __tablename__ = "gis_upload_batches"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    target_layer: Mapped[str] = mapped_column(String(32), index=True)
+    state_code: Mapped[str | None] = mapped_column(String(8), index=True)
+    file_name: Mapped[str] = mapped_column(String(260))
+    file_type: Mapped[str] = mapped_column(String(24))
+    source_name: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    license_note: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    validation_report: Mapped[dict] = mapped_column(JSONB, default=dict)
+    attribute_mapping: Mapped[dict] = mapped_column(JSONB, default=dict)
+    feature_collection: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AdminAuditLog(Base):
+    """Immutable admin action trail."""
+
+    __tablename__ = "admin_audit_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(40), index=True)
+    target_type: Mapped[str] = mapped_column(String(40), index=True)
+    target_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class LandCoverRaster(Base):
@@ -431,6 +540,9 @@ Index("ix_dem_samples_geom", DemSample.geom, postgresql_using="gist")
 Index("ix_planning_geom", PlanningLayer.geom, postgresql_using="gist")
 Index("ix_land_use_geom", LandUseArea.geom, postgresql_using="gist")
 Index("ix_territory_boundaries_geom", TerritoryBoundary.geom, postgresql_using="gist")
+Index("ix_states_geom", StateBoundary.geom, postgresql_using="gist")
+Index("ix_lgas_geom", LgaBoundary.geom, postgresql_using="gist")
+Index("ix_masterplan_areas_geom", MasterplanArea.geom, postgresql_using="gist")
 Index("ix_building_footprints_geom", BuildingFootprint.geom, postgresql_using="gist")
 Index("ix_vegetation_canopy_areas_geom", VegetationCanopyArea.geom, postgresql_using="gist")
 Index("ix_spatial_metric_cells_geom", SpatialMetricCell.geom, postgresql_using="gist")

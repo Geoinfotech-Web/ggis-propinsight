@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { DOMAIN_ORDER, type DomainResult, type Scorecard } from "../api";
 import { getPersona, type PersonaKey } from "../lib/personas";
 import type { Theme } from "../theme";
-import { IconCopy, IconCube3D, IconEdit, IconMore, IconPin, IconX } from "./Icons";
+import { IconCopy, IconCube3D, IconEdit, IconMore, IconPin, IconPlus, IconX } from "./Icons";
 import { ScoreRing } from "./ScoreRing";
 
 const DOMAIN_LABELS: Record<(typeof DOMAIN_ORDER)[number], string> = {
@@ -549,6 +549,7 @@ function HabitabilityDetails({ result, dark }: { result: DomainResult; dark: boo
 /** Mobile-network evidence grouped under the Internet / ISP amenity row. */
 function IspNetworkDetails({ evidence, dark }: { evidence: Record<string, unknown>; dark: boolean }) {
   const network = parseNetworkCoverage(evidence);
+  const [showAllProviders, setShowAllProviders] = useState(false);
   if (network.providers.length === 0 && !network.connectivityRead) return null;
   const isp = asRecord(evidence.isp);
   const hasIspPoi = typeof isp.distance_m === "number";
@@ -556,6 +557,12 @@ function IspNetworkDetails({ evidence, dark }: { evidence: Record<string, unknow
     { key: "5G", label: "5G" },
     { key: "4G", label: "4G / LTE" },
   ];
+  const hiddenProviderCount = generations.reduce((count, generation) => {
+    const providerCount = network.providers.filter(
+      (provider) => provider.generation === generation.key,
+    ).length;
+    return count + Math.max(0, providerCount - 2);
+  }, 0);
   const statusLabel = (provider: NetworkCoverageProvider) => {
     if (provider.available === "no") return `No ${provider.generation}`;
     if (provider.available === "unknown") return "Unknown";
@@ -574,6 +581,7 @@ function IspNetworkDetails({ evidence, dark }: { evidence: Record<string, unknow
               (provider) => provider.generation === generation.key,
             );
             if (providers.length === 0) return null;
+            const visibleProviders = showAllProviders ? providers : providers.slice(0, 2);
             return (
               <section key={generation.key} aria-label={`${generation.label} coverage`}>
                 <p
@@ -585,7 +593,7 @@ function IspNetworkDetails({ evidence, dark }: { evidence: Record<string, unknow
                   {generation.label}
                 </p>
                 <ul className="divide-y divide-slate-200/60 dark:divide-gray-800/80">
-                  {providers.map((provider) => (
+                  {visibleProviders.map((provider) => (
                     <li
                       key={`${provider.generation}-${provider.provider}`}
                       className="flex items-start justify-between gap-2 py-1.5 text-[10px]"
@@ -609,6 +617,21 @@ function IspNetworkDetails({ evidence, dark }: { evidence: Record<string, unknow
               </section>
             );
           })}
+          {hiddenProviderCount > 0 && (
+            <button
+              type="button"
+              aria-expanded={showAllProviders}
+              onClick={() => setShowAllProviders((current) => !current)}
+              className={clsx(
+                "w-full border-t pt-2 text-left text-[10px] font-semibold transition-colors",
+                dark
+                  ? "border-gray-700/80 text-sky-300 hover:text-sky-200"
+                  : "border-slate-200 text-sky-700 hover:text-sky-900",
+              )}
+            >
+              {showAllProviders ? "Show less" : `View more · ${hiddenProviderCount}`}
+            </button>
+          )}
         </div>
       )}
       {network.source && (
@@ -1166,12 +1189,10 @@ export function ScorecardConsole({
                   <button
                     type="button"
                     onClick={onReset}
-                    className={clsx(
-                      "inline-flex h-8 items-center rounded-lg px-2.5 text-[11px] font-semibold",
-                      dark ? "bg-gray-800 text-gray-200" : "bg-slate-100 text-slate-700",
-                    )}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-full border border-emerald-400/80 bg-emerald-500 px-4 text-sm font-bold text-white shadow-[0_8px_18px_rgba(16,185,129,0.28)] transition hover:bg-emerald-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
                   >
-                    Reset
+                    <IconPlus size={17} />
+                    New
                   </button>
                 )}
                 {onEditAnalysis && (

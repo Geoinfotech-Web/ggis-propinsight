@@ -146,6 +146,9 @@ export type Scorecard = {
     ward?: string | null;
     area_council?: string | null;
     state: string | null;
+    state_code?: string | null;
+    lga?: string | null;
+    lga_id?: number | null;
     geohash8: string | null;
     land_use?: LandUseInfo | null;
     land_cover?: LandCoverInfo | null;
@@ -169,6 +172,24 @@ export type Scorecard = {
   development_outlook?: DevelopmentOutlook | null;
 };
 
+export type StateLayerStatus = {
+  status: "published" | "unpublished" | "partial" | string;
+  version: string;
+  notes?: string | null;
+};
+
+export type StateOption = {
+  code: string;
+  name: string;
+  capital: string | null;
+  centroid: [number, number];
+  bbox: [number, number, number, number];
+  published: boolean;
+  readiness: "ready" | "partial" | "setup_required" | string;
+  readiness_label: string;
+  layers: Record<string, StateLayerStatus>;
+};
+
 export const DOMAIN_ORDER = [
   "flood",
   "security",
@@ -186,6 +207,7 @@ export async function analyzePoint(
   profile = "home_buyer",
   radiusM = 5_000,
   signal?: AbortSignal,
+  stateCode?: string,
 ): Promise<Scorecard> {
   const res = await fetch("/v1/locations/analyze", {
     method: "POST",
@@ -195,9 +217,93 @@ export async function analyzePoint(
       geometry: { type: "Point", coordinates: [lng, lat] },
       profile,
       radius_m: radiusM,
+      state_code: stateCode,
     }),
   });
   if (!res.ok) throw new Error(`analyze failed: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchStates(signal?: AbortSignal): Promise<StateOption[]> {
+  const res = await fetch("/v1/locations/states", { signal });
+  if (!res.ok) throw new Error(`state readiness failed: ${res.status}`);
+  return res.json();
+}
+
+export type AdminLoginResponse = {
+  access_token: string;
+  token_type: "bearer";
+  user: { id: number; email: string; role: string };
+};
+
+export async function adminLogin(email: string, password: string): Promise<AdminLoginResponse> {
+  const res = await fetch("/v1/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error(`login failed: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchAdminStates(token: string): Promise<StateOption[]> {
+  const res = await fetch("/v1/admin/states", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`admin states failed: ${res.status}`);
+  return res.json();
+}
+
+export async function uploadAdminGis(
+  token: string,
+  form: FormData,
+): Promise<{ id: number; status: string; validation_report: Record<string, unknown> }> {
+  const res = await fetch("/v1/admin/gis/uploads", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function publishAdminUpload(
+  token: string,
+  id: number,
+): Promise<{ id: number; status: string; version: string; states: string[] }> {
+  const res = await fetch(`/v1/admin/gis/uploads/${id}/publish`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function rollbackAdminUpload(
+  token: string,
+  id: number,
+): Promise<{ id: number; status: string; states: string[]; restored_version: string | null }> {
+  const res = await fetch(`/v1/admin/gis/uploads/${id}/rollback`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function fetchAdminPreview(token: string, id: number): Promise<GeoJSON.FeatureCollection> {
+  const res = await fetch(`/v1/admin/gis/uploads/${id}/preview`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`preview failed: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchAdminAudit(token: string): Promise<Array<Record<string, unknown>>> {
+  const res = await fetch("/v1/admin/gis/audit", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`audit failed: ${res.status}`);
   return res.json();
 }
 

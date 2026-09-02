@@ -569,7 +569,7 @@ function drawSinglePage(doc: jsPDF, input: LocationReportInput, mapImage: string
   doc.text("PropInsight", 12, 8);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text("FCT location intelligence", 12, 13);
+  doc.text("Nigeria location intelligence", 12, 13);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.text(truncate(input.reportTitle || `${persona.label} location report`, 78), 285, 8, { align: "right" });

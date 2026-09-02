@@ -12,6 +12,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import __version__
+from app.admin_gis import router as admin_router
+from app.auth import bootstrap_admin_from_env, router as auth_router
 from app.config import get_settings
 from app.db import get_session
 from app.flood.client import get_flood_client
@@ -25,7 +27,7 @@ logging.basicConfig(level=settings.aia_log_level)
 app = FastAPI(
     title="GGIS PropInsight (AIA) API",
     version=__version__,
-    description="Location intelligence API for the Nigerian property market. FCT pilot.",
+    description="Location intelligence API for the Nigerian property market with phased nationwide coverage.",
 )
 
 app.add_middleware(
@@ -74,4 +76,11 @@ async def domain_readiness(session: AsyncSession = Depends(get_session)) -> dict
 
 
 app.include_router(meta)
+app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(locations_router)
+
+
+@app.on_event("startup")
+async def bootstrap_configured_admin() -> None:
+    await bootstrap_admin_from_env()

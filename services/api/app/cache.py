@@ -26,7 +26,7 @@ settings = get_settings()
 DEFAULT_TTL_SECONDS = 24 * 3600
 # Bump when the response composition or persona domain set changes so cached
 # scorecards cannot preserve an older report experience for up to 24 hours.
-REPORT_SCHEMA_VERSION = "v14"
+REPORT_SCHEMA_VERSION = "v15"
 
 
 class ScorecardCache:

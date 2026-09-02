@@ -1,4 +1,4 @@
-/** Shared place-search helpers (Nominatim, FCT-biased). */
+/** Shared place-search helpers (Nominatim, Nigeria/state-biased). */
 
 export type PlaceHit = {
   id: string;
@@ -7,9 +7,13 @@ export type PlaceHit = {
   lat: number;
 };
 
-const FCT_VIEWBOX = "6.9,8.7,7.8,9.4"; // lon_min,lat_min,lon_max,lat_max
+const NIGERIA_VIEWBOX = "2.65,4.25,14.7,13.95"; // lon_min,lat_min,lon_max,lat_max
 
-export async function searchPlaces(query: string, signal?: AbortSignal): Promise<PlaceHit[]> {
+export async function searchPlaces(
+  query: string,
+  signal?: AbortSignal,
+  viewbox?: [number, number, number, number],
+): Promise<PlaceHit[]> {
   const q = query.trim();
   if (q.length < 2) return [];
 
@@ -19,7 +23,7 @@ export async function searchPlaces(query: string, signal?: AbortSignal): Promise
     limit: "6",
     addressdetails: "0",
     countrycodes: "ng",
-    viewbox: FCT_VIEWBOX,
+    viewbox: viewbox?.join(",") ?? NIGERIA_VIEWBOX,
     bounded: "0",
   });
 

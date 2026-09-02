@@ -92,6 +92,7 @@ from app.location_intelligence.security import (
 from app.location_intelligence.summary import build_highlights, build_summary
 from app.location_intelligence.tenure import overlapping_planning, score_tenure
 from app.scoring.engine import DomainScore
+from app.state_readiness import lga_for_point, resolve_state_context, state_layer_versions
 
 if TYPE_CHECKING:
     from app.cache import ScorecardCache
@@ -478,6 +479,14 @@ async def analyze(
     persona_key = resolve_persona_key(req.profile)
     radius_m = req.radius_m
     flood_data_mode = str(getattr(flood, "data_mode", "live"))
+    state_context = (
+        await resolve_state_context(session, lon, lat, req.state_code)
+        if session is not None
+        else None
+    )
+    lga = await lga_for_point(session, lon, lat) if session is not None else None
+    if session is not None and state_context is not None:
+        versions = await state_layer_versions(session, versions, state_context["code"])
 
     layer_versions: dict[str, str] = dict(versions)
     cache_key = None
@@ -700,7 +709,16 @@ async def analyze(
             district=district["name"] if district else None,
             ward=ward["name"] if ward else None,
             area_council=ward["area_council"] if ward else None,
-            state=district["state"] if district else None,
+            state=(
+                state_context["name"]
+                if state_context
+                else district["state"]
+                if district
+                else None
+            ),
+            state_code=state_context["code"] if state_context else None,
+            lga=lga["name"] if lga else None,
+            lga_id=lga["id"] if lga else None,
             land_use=land_use,
             land_cover=land_cover,
             planning_status=planning_status,

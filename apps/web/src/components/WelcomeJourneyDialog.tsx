@@ -1,10 +1,10 @@
 import { useEffect, useId, useRef, useState } from "react";
 import clsx from "clsx";
+import type { StateOption } from "../api";
 import { getCurrentPosition } from "../lib/geocode";
 import type { PersonaKey } from "../lib/personas";
-import type { Theme } from "../theme";
+import brandLogo from "../assets/propinsight-logo.png";
 import {
-  IconBrandMark,
   IconChart,
   IconHome,
   IconKey,
@@ -20,13 +20,16 @@ export type WelcomeLocation = {
   label?: string;
 };
 
-type WelcomeStep = "welcome" | "interest" | "location" | "confirm";
+type WelcomeStep = "state" | "welcome" | "interest" | "location" | "confirm";
 type InterestKey = "rent" | "buy" | "invest" | "develop";
 
 type Props = {
   open: boolean;
-  theme: Theme;
   candidate: WelcomeLocation | null;
+  states: StateOption[];
+  selectedStateCode: string;
+  statesLoading?: boolean;
+  onStateChange: (stateCode: string) => void;
   onCandidateChange: (candidate: WelcomeLocation | null) => void;
   onConfirm: (candidate: WelcomeLocation, suggestedPersona: PersonaKey) => void;
 };
@@ -69,10 +72,11 @@ const INTERESTS: Array<{
 ];
 
 const STEP_NUMBER: Record<WelcomeStep, number> = {
-  welcome: 1,
-  interest: 2,
-  location: 3,
-  confirm: 4,
+  state: 1,
+  welcome: 2,
+  interest: 3,
+  location: 4,
+  confirm: 5,
 };
 
 function parseCoordinate(value: string): number | null {
@@ -83,12 +87,15 @@ function parseCoordinate(value: string): number | null {
 
 export function WelcomeJourneyDialog({
   open,
-  theme: _theme,
   candidate,
+  states,
+  selectedStateCode,
+  statesLoading = false,
+  onStateChange,
   onCandidateChange,
   onConfirm,
 }: Props) {
-  const [step, setStep] = useState<WelcomeStep>("welcome");
+  const [step, setStep] = useState<WelcomeStep>("state");
   const [interest, setInterest] = useState<InterestKey>("buy");
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
@@ -100,7 +107,7 @@ export function WelcomeJourneyDialog({
 
   useEffect(() => {
     if (!open) return;
-    setStep("welcome");
+    setStep("state");
     setInterest("buy");
     setLatitude("");
     setLongitude("");
@@ -142,9 +149,22 @@ export function WelcomeJourneyDialog({
 
   if (!open) return null;
 
+  const selectedState =
+    states.find((state) => state.code === selectedStateCode) ??
+    states.find((state) => state.code === "FC") ??
+    states[0];
   const selectedInterest = INTERESTS.find((item) => item.key === interest) ?? INTERESTS[1];
   const stepNumber = STEP_NUMBER[step];
+  const selectedBbox = selectedState?.bbox;
+  const isInsideSelectedState = (lon: number, lat: number) => {
+    if (!selectedBbox) return true;
+    return lon >= selectedBbox[0] && lon <= selectedBbox[2] && lat >= selectedBbox[1] && lat <= selectedBbox[3];
+  };
   const previewLocation = (next: WelcomeLocation) => {
+    if (!isInsideSelectedState(next.lon, next.lat)) {
+      setLocationError(`That point is outside ${selectedState?.name ?? "the selected state"}. Choose the matching state or adjust the coordinates.`);
+      return;
+    }
     onCandidateChange(next);
     setLatitude(next.lat.toFixed(6));
     setLongitude(next.lon.toFixed(6));
@@ -190,7 +210,7 @@ export function WelcomeJourneyDialog({
         >
           <div className="flex items-center justify-between gap-3">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-600">
-              Step 4 of 4 · Confirm location
+              Step 5 of 5 · Confirm location
             </p>
             <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold text-amber-800">
               Pin adjustable
@@ -210,6 +230,7 @@ export function WelcomeJourneyDialog({
               {candidate ? `${candidate.lat.toFixed(6)}, ${candidate.lon.toFixed(6)}` : "Select a location to continue"}
             </p>
           </div>
+          {locationError && <p className="mt-2 text-xs font-semibold text-red-200">{locationError}</p>}
           <div className="mt-4 flex items-center justify-between gap-3">
             <button
               type="button"
@@ -225,7 +246,14 @@ export function WelcomeJourneyDialog({
               type="button"
               data-autofocus
               disabled={!candidate}
-              onClick={() => candidate && onConfirm(candidate, selectedInterest.persona)}
+              onClick={() => {
+                if (!candidate) return;
+                if (!isInsideSelectedState(candidate.lon, candidate.lat)) {
+                  setLocationError(`That point is outside ${selectedState?.name ?? "the selected state"}. Adjust the pin or choose the matching state.`);
+                  return;
+                }
+                onConfirm(candidate, selectedInterest.persona);
+              }}
               className="inline-flex items-center gap-2 rounded-xl bg-[#087df1] px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <IconMap size={16} />
@@ -251,18 +279,23 @@ export function WelcomeJourneyDialog({
       >
         <div className="px-6 pb-3 pt-6 sm:px-8 sm:pt-8">
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 ring-1 ring-sky-100">
-              <IconBrandMark size={27} />
+            <span className="flex h-12 w-12 items-center justify-center">
+              <img
+                src={brandLogo}
+                alt=""
+                className="h-12 w-12 object-contain"
+                draggable={false}
+              />
             </span>
             <div>
               <p className="font-bold tracking-tight">PropInsight</p>
               <p className="text-[10px] uppercase tracking-[0.16em] text-white/65">
-                FCT location intelligence
+                Nigeria location intelligence
               </p>
             </div>
           </div>
-          <div className="mt-6 grid grid-cols-4 gap-2" aria-label={`Step ${stepNumber} of 4`}>
-            {[1, 2, 3, 4].map((number) => (
+          <div className="mt-6 grid grid-cols-5 gap-2" aria-label={`Step ${stepNumber} of 5`}>
+            {[1, 2, 3, 4, 5].map((number) => (
               <span
                 key={number}
                 className={clsx(
@@ -273,18 +306,71 @@ export function WelcomeJourneyDialog({
             ))}
           </div>
           <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-sky-600">
-            Step {stepNumber} of 4
+            Step {stepNumber} of 5
           </p>
         </div>
 
         <div className="min-h-0 overflow-y-auto px-6 pb-5 sm:px-8">
+          {step === "state" && (
+            <div>
+              <h1 id={titleId} className="text-2xl font-bold tracking-tight sm:text-3xl">Select a Nigerian state.</h1>
+              <p className="mt-2 text-sm leading-5 text-white/75">
+                FCT is ready today. Other states are available for setup and become score-ready as admin layers are published.
+              </p>
+              <div className="mt-5 max-h-[42vh] overflow-y-auto pr-1">
+                <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Nigerian state">
+                  {statesLoading && (
+                    <div className="col-span-full rounded-2xl border border-white/30 bg-white/12 p-4 text-sm text-white/80">
+                      Loading state readiness…
+                    </div>
+                  )}
+                  {!statesLoading && states.map((state) => {
+                    const selected = state.code === selectedStateCode;
+                    const readyTone =
+                      state.readiness === "ready"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : state.readiness === "partial"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-slate-100 text-slate-600";
+                    return (
+                      <button
+                        key={state.code}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        data-autofocus={selected ? true : undefined}
+                        onClick={() => onStateChange(state.code)}
+                        className={clsx(
+                          "rounded-2xl border bg-white p-3 text-left text-slate-900 shadow-sm outline-none transition focus-visible:ring-4 focus-visible:ring-sky-300/60",
+                          selected ? "border-emerald-500 bg-emerald-50 shadow-[0_0_0_2px_rgba(16,185,129,0.2)]" : "border-slate-200 hover:border-sky-200",
+                        )}
+                      >
+                        <span className="flex items-start justify-between gap-3">
+                          <span>
+                            <span className="block text-sm font-bold">{state.name}</span>
+                            <span className="mt-1 block text-[11px] text-slate-500">
+                              {state.capital ? `Capital: ${state.capital}` : state.code}
+                            </span>
+                          </span>
+                          <span className={clsx("shrink-0 rounded-full px-2 py-1 text-[10px] font-bold", readyTone)}>
+                            {state.readiness_label}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {step === "welcome" && (
             <div>
               <h1 id={titleId} className="max-w-lg text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
                 Make a more informed property decision.
               </h1>
               <p className="mt-4 max-w-xl text-sm leading-6 text-white/80 sm:text-base">
-                PropInsight brings planning context, flood exposure, amenities, access, market signals and site evidence together for locations across the FCT.
+                PropInsight brings planning context, flood exposure, amenities, access, market signals and site evidence together for Nigerian locations as state layers come online.
               </p>
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 {[
@@ -355,6 +441,7 @@ export function WelcomeJourneyDialog({
                 <SearchBar
                   theme="light"
                   size="lg"
+                  viewbox={selectedBbox}
                   placeholder="Search an address, district or landmark…"
                   onResult={(hit) => previewLocation({ lon: hit.lon, lat: hit.lat, label: hit.label })}
                 />
@@ -419,10 +506,10 @@ export function WelcomeJourneyDialog({
         </div>
 
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/30 px-6 py-5 sm:px-8">
-          {step === "welcome" ? <span /> : (
+          {step === "state" ? <span /> : (
             <button
               type="button"
-              onClick={() => setStep(step === "location" ? "interest" : "welcome")}
+              onClick={() => setStep(step === "welcome" ? "state" : step === "interest" ? "welcome" : "interest")}
               className="rounded-xl px-3 py-2 text-sm font-semibold text-white hover:bg-white/10"
             >
               Back
@@ -431,11 +518,11 @@ export function WelcomeJourneyDialog({
           {step !== "location" && (
             <button
               type="button"
-              data-autofocus={step === "welcome" ? true : undefined}
-              onClick={() => setStep(step === "welcome" ? "interest" : "location")}
+              data-autofocus={step === "state" ? true : undefined}
+              onClick={() => setStep(step === "state" ? "welcome" : step === "welcome" ? "interest" : "location")}
               className="rounded-xl bg-[#087df1] px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-sky-600"
             >
-              {step === "welcome" ? "Get started" : "Continue"}
+              {step === "state" ? "Continue" : step === "welcome" ? "Get started" : "Continue"}
             </button>
           )}
         </div>
